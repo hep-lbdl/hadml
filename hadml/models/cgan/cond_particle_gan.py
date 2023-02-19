@@ -7,7 +7,7 @@ from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
 
-from src.metrics.media_logger import log_images
+from hadml.metrics.media_logger import log_images
 
 
 class CondParticleGANModule(LightningModule):

@@ -6,7 +6,7 @@ from torch import Tensor
 
 from torch_scatter import scatter_mean
 
-from src.models.components.mlp import MLPModule
+from hadml.models.components.mlp import MLPModule
 
 class DeepSetModule(nn.Module):
     def __init__(self, input_dim: int, encoder_dims: List[int], decoder_dims: List[int],

@@ -10,7 +10,7 @@ import torch
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.core.mixins import HyperparametersMixin
 
-from src.datamodules.components.utils import (
+from hadml.datamodules.components.utils import (
     read_dataframe, split_to_float, InputScaler, boost
 )
 
