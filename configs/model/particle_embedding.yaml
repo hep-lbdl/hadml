@@ -1,0 +1,5 @@
+## Setup a model to encode particle types into a vector embedding
+## so that particles in the same events are close to each other
+## in the embedding space.
+
+_target_: src.models.node_embedding_module.ParticleEmbeddingModule

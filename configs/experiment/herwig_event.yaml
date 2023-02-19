@@ -1,0 +1,77 @@
+# @package _global_
+
+# start the environment
+# conda-start torch
+
+# to execute this experiment run:
+# python src/train.py experiment=herwig_event
+## to add a logger
+# python src/train.py experiment=herwig_all_hadron logger=wandb
+
+## with training techniques
+# python src/train.py experiment=herwig_all_hadron logger=wandb +trainer.gradient_clip_val=0.5
+
+defaults:
+  - override /datamodule: herwig_event.yaml
+  - override /model: cond_event_gan.yaml
+  - override /callbacks: default.yaml
+  - override /trainer: gpu.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+task_name: herwigEvent
+tags: ["herwig", "Events"]
+
+wandb:
+  project: "herwigEvents"
+  tags: ["herwig", "Events"]
+
+seed: 12345
+
+trainer:
+  max_epochs: 2
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/min_avg_wd"
+    mode: "min"
+    save_top_k: 5
+    save_last: True
+  
+# ## override /datamodule:
+datamodule:
+  batch_size: 5_000
+  pin_memory: True
+  train_val_test_split: [5_000_000, 40_000, 40_000]
+
+
+# ## override /model:
+# model:
+#   noise_dim: 64
+#   generator:
+#     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
+#     hidden_dims: [256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
+
+#   discriminator:
+#     encoder_dims: [128, 128, 128, 128, 128, 128, 128, 128]
+#     decoder_dims: [128, 128, 128, 128, 256, 256, 256, 256]
+#     word_embedding_dim: 16
+#     dropout: 0.3
+
+#   optimizer_generator:
+#     _target_: torch.optim.RMSprop
+#     lr: 0.000005
+
+#   optimizer_discriminator:
+#     _target_: torch.optim.RMSprop
+#     lr: 0.0001
+  
+#   # criterion:
+#   #   __target__: torch.nn.BCELoss
+#   #   reduction: "mean"
+
+#   # optimizer_generator:
+#   #   lr: 0.000001
+
+#   # optimizer_discriminator:
+#   #   lr: 0.000005

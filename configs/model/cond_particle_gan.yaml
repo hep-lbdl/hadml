@@ -1,0 +1,54 @@
+_target_: src.models.cgan.cond_particle_gan.CondParticleGANModule
+noise_dim: 128
+cond_info_dim: 8
+num_particle_ids: 322
+num_output_particles: 2
+num_particle_kinematics: 2
+
+## how often the optimizers will be used.
+num_critics: 1
+num_gen: 5
+
+optimizer_generator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.00005
+
+optimizer_discriminator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+
+generator:
+  _target_: src.models.components.mlp.MLPModule
+  # _target_: src.models.components.mlp_res.ResMLPModule
+  input_dim: 136   # ${model.noise_dim} + ${model.cond_info_dim} = 128 + 8
+  hidden_dims: [256, 256]
+  output_dim: 646   # ${model.num_particle_ids} * ${model.num_output_particles} + ${model.num_particle_kinematics}
+  layer_norm: true
+  dropout: 0.0
+  last_activation:
+    _target_: torch.nn.Tanh
+
+discriminator:
+  _target_: src.models.components.mlp.MLPWithEmbeddingModule
+  input_dim: 10 # ${model.cond_info_dim} + ${model.num_particle_kinematics}
+  vocab_size: ${model.num_particle_ids}
+  word_embedding_dim: 32
+  num_words: ${model.num_output_particles}
+  encoder_dims: [128, 128]
+  decoder_dims: [128, 128]
+  output_dim: 1
+  embedding_type: "dense"
+  # last_activation:
+  #   _target_: torch.nn.Sigmoid
+
+comparison_fn:
+  _target_: src.metrics.compare_fn.CompareParticles
+  xlabels: ["phi", "eta"]
+  num_kinematics: ${model.num_particle_kinematics}
+  num_particles: ${model.num_output_particles}
+  num_particle_ids: ${model.num_particle_ids}
+  outdir: ${paths.output_dir}/images
+
+
