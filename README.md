@@ -6,7 +6,7 @@ The original README.md is moved to [`tests/README.md`](tests/README.md).
 
 # A crash course on training
 This nice code structure is based on the [Pytorch Lightning](https://www.pytorchlightning.ai/) and [Hydra](https://hydra.cc/docs/intro/). It is created from the [Lightning-Hydra-Template](https://github.com/ashleve/lightning-hydra-template). 
-So all our ML models will use the Pytorch. Hydra provides powerful configuration management and allows us to easily switch between different configurations.
+Pytorch lightning saves us from writing many boilplates. Hydra provides powerful configuration management and allows us to easily switch between different configurations.
 However, great flexibility comes with many options/configurations and it can be overwhelming at first.
 
 `configs` contains a hieratical configurations for different parts of the code.
