@@ -389,7 +389,7 @@ class HerwigEventDataset(InMemoryDataset):
     def raw_file_names(self):
         if self.raw_file_list is not None:
             return self.raw_file_list
-        return ['ClusterTo2Pi0_large.dat']
+        return ['ClusterTo2Pi0_new.dat']
     
     @property
     def processed_file_names(self):

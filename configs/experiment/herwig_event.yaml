@@ -39,10 +39,10 @@ callbacks:
     save_last: True
   
 # ## override /datamodule:
-datamodule:
-  batch_size: 5_000
-  pin_memory: True
-  train_val_test_split: [5_000_000, 40_000, 40_000]
+# datamodule:
+#   batch_size: 5_000
+#   pin_memory: True
+#   train_val_test_split: [5_000_000, 40_000, 40_000]
 
 
 # ## override /model:

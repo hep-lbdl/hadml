@@ -18,7 +18,7 @@ optimizer_discriminator:
 generator:
   _target_: hadml.models.components.mlp.MLPModule
   # _target_: hadml.models.components.mlp_res.ResMLPModule
-  input_dim: ${sum:${model.noise_dim},${model.cond_info_dim}} 
+  input_dim: ${eval:${model.noise_dim}+${model.cond_info_dim}} 
   hidden_dims: ${gen_list:256,2}
   output_dim: ${model.num_particle_kinematics}
   layer_norm: true
@@ -26,7 +26,7 @@ generator:
 
 discriminator:
   _target_: hadml.models.components.deep_set.DeepSetModule
-  input_dim: ${sum:${model.cond_info_dim},${model.num_particle_kinematics}}
+  input_dim: ${eval:${model.cond_info_dim}+${model.num_particle_kinematics}}
   encoder_dims:  ${gen_list:128,2}
   decoder_dims: ${gen_list:128,2}
   output_dim: 1
@@ -37,11 +37,3 @@ criterion:
   _target_: torch.nn.BCELoss
 
 comparison_fn: null
-  # _target_: src.metrics.compare_fn.CompareParticles
-  # xlabels: ["phi", "eta"]
-  # num_kinematics: ${model.num_particle_kinematics}
-  # num_particles: ${model.num_output_particles}
-  # num_particle_ids: ${model.num_particle_ids}
-  # outdir: ${paths.output_dir}/images
-
-
