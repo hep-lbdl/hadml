@@ -29,7 +29,7 @@ class Herwig(LightningDataModule):
         self, 
         data_dir: str = "data/",
         fname: str = "allHadrons_10M_mode4_with_quark_with_pert.npz",
-        original_fname: str = "cluster_ML_allHadrons_10M.txt",
+        origin_fname: str = "cluster_ML_allHadrons_10M.txt",
         train_val_test_split: Tuple[int, int, int] = (100, 50, 50),
         num_output_hadrons: int = 2,
         num_particle_kinematics: int = 2,

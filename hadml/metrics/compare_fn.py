@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 def create_plots(nrows, ncols):
     fig, axs = plt.subplots(
         nrows, ncols,
-        figsize=(4*ncols, 4*nrows), constrained_layout=True)
+        figsize=(4*ncols, 4*nrows), constrained_layout=False)
     axs = axs.flatten()
     return fig, axs
     

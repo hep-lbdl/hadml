@@ -1,10 +1,10 @@
-_target_: src.datamodules.gan_datamodule.EventGANDataModule
+_target_: hadml.datamodules.gan_datamodule.EventGANDataModule
 batch_size: 1
 num_workers: 1
 pin_memory: False
 train_val_test_split: [5, 2, 3]
 dataset:
-  _target_: src.datamodules.components.herwig.HerwigEventDataset
+  _target_: hadml.datamodules.components.herwig.HerwigEventDataset
   root: ${paths.data_dir}/Herwig/
   raw_file_list:
     - "ClusterTo2Pi0_new.dat"

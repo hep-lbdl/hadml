@@ -2,4 +2,4 @@
 ## so that particles in the same events are close to each other
 ## in the embedding space.
 
-_target_: src.models.node_embedding_module.ParticleEmbeddingModule
+_target_: hadml.models.node_embedding_module.ParticleEmbeddingModule
