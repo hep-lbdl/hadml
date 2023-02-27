@@ -22,10 +22,10 @@ def log_images(
     
     if isinstance(logger, TensorBoardLogger):
         for idx,image in enumerate(images):
-            logger.experiment.add_image(key+f"/{idx}", image, **kwags)
+            logger.add_image(key+f"/{idx}", image, **kwags)
 
     elif isinstance(logger, WandbLogger):
-        logger.experiment.log_image(key, images=images, **kwags)
+        logger.log_image(key, images=images, **kwags)
 
     else:
         raise TypeError(f'Expected a TensorBoardLogger or WandbLogger, found {type(logger)}')
