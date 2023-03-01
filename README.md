@@ -21,6 +21,9 @@ conda activate herwig
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
 conda install pyg -c pyg
 
+## and install pyG
+conda install pyg -c pyg
+
 # install requirements
 pip install -r requirements.txt
 
