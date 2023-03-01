@@ -78,8 +78,9 @@ class MLPParticleModule(nn.Module):
         self.encoder = nn.Sequential(*build_linear_layers(
             input_dim, hidden_dims, hidden_dims[-1], layer_norm, dropout)
         )
+
         self.particle_type = nn.Sequential(*build_linear_layers(
-            hidden_dims[-1], [particle_type_dim*2], particle_type_dim, layer_norm, dropout, torch.nn.LogSoftmax(dim=-1)))
+            int(hidden_dims[-1] / num_output_particles), [particle_type_dim*2], particle_type_dim, layer_norm, dropout, torch.nn.LogSoftmax(dim=-1)))
                                            
         self.particle_kinematics = nn.Sequential(*build_linear_layers(
             hidden_dims[-1], [kinematic_dim*2], kinematic_dim, layer_norm, dropout, torch.nn.Tanh()))

@@ -36,4 +36,10 @@ discriminator:
 criterion:
   _target_: torch.nn.BCELoss
 
-comparison_fn: null
+comparison_fn:
+  _target_: hadml.metrics.compare_fn.CompareParticles
+  xlabels: ["phi", "eta"]
+  num_kinematics: ${model.num_particle_kinematics}
+  num_particles: 0
+  num_particle_ids: ${model.num_particle_ids}
+  outdir: ${paths.output_dir}/images

@@ -20,14 +20,17 @@ optimizer_discriminator:
   lr: 0.0001
 
 generator:
-  _target_: hadml.models.components.mlp.MLPModule
+  _target_: hadml.models.components.mlp.MLPParticleModule
   input_dim: ${eval:${model.noise_dim}+${model.cond_info_dim}}
   hidden_dims: [256, 256]
-  output_dim: ${eval:${model.num_particle_ids}*${model.num_output_particles}+${model.num_particle_kinematics}}
+  # output_dim: ${eval:${model.num_particle_ids}*${model.num_output_particles}+${model.num_particle_kinematics}}
+  kinematic_dim: ${model.num_particle_kinematics}
+  particle_type_dim: ${model.num_particle_ids}
+  num_output_particles: ${model.num_output_particles}
   layer_norm: true
   dropout: 0.0
-  last_activation:
-    _target_: torch.nn.Tanh
+  # last_activation:
+  #   _target_: torch.nn.Tanh
 
 discriminator:
   _target_: hadml.models.components.mlp.MLPWithEmbeddingModule
