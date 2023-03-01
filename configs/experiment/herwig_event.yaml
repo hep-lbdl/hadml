@@ -29,7 +29,8 @@ wandb:
 seed: 12345
 
 trainer:
-  max_epochs: 2
+  max_epochs: 99
+  log_every_n_steps: 1
 
 callbacks:
   model_checkpoint:
@@ -39,10 +40,11 @@ callbacks:
     save_last: True
   
 # ## override /datamodule:
-# datamodule:
-#   batch_size: 5_000
-#   pin_memory: True
-#   train_val_test_split: [5_000_000, 40_000, 40_000]
+datamodule:
+  batch_size: 250
+  num_workers: 8
+  pin_memory: True
+  train_val_test_split: [500, 250, 250]
 
 
 # ## override /model:

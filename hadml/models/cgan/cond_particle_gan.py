@@ -75,7 +75,7 @@ class CondParticleGANModule(LightningModule):
         ## which produces particle kinematics and types in one go.
         ## In MLP case, we need to split the output into two parts.
         for name, module in self.generator.named_modules():
-            if "MLPParticleModule" in name:
+            if "particle" in name:
                 self.use_particle_mlp = True
                 break
         
@@ -285,10 +285,10 @@ class CondParticleGANModule(LightningModule):
         if self.comparison_fn is not None:
             ## compare the generated events with the real ones
             images = self.comparison_fn(predictions, truths, outname)
-            if self.logger is not None and self.logger.experiment is not None:
-                log_images(self.logger, "particle kinematic", [images[0]])
-                if images[1] is not None:
-                    log_images(self.logger, "particle type", [images[1]])
+            # if self.logger is not None and self.logger.experiment is not None:
+            #     log_images(self.logger, "particle kinematic", [images[0]])
+            #     if images[1] is not None:
+            #         log_images(self.logger, "particle type", [images[1]])
             
             
     def validation_step(self, batch: Any, batch_idx: int):
