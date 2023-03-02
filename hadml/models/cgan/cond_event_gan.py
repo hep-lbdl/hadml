@@ -193,8 +193,8 @@ class CondEventGANModule(LightningModule):
             images = self.comparison_fn(predictions, truths, outname)
             if self.logger.experiment is not None:
                 log_images(self.logger, "Event GAN",
-                           list(images.values()),
-                           list(images.keys()))
+                           images=list(images.values()),
+                           caption=list(images.keys()))
             
             
     def validation_step(self, batch: Any, batch_idx: int):
