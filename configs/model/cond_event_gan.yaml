@@ -1,9 +1,13 @@
 _target_: hadml.models.cgan.cond_event_gan.CondEventGANModule
-noise_dim: 128
+noise_dim: 10
 cond_info_dim: 4
 num_particle_ids: 322
 num_output_particles: 2
 num_particle_kinematics: 2
+
+## how often the optimizers will be used.
+num_critics: 1
+num_gen: 5
 
 optimizer_generator:
   _target_: torch.optim.Adam

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from torch_scatter import scatter_mean
+from torch_scatter import scatter_mean, scatter_add
 
 from hadml.models.components.mlp import MLPModule
 
@@ -21,7 +21,7 @@ class DeepSetModule(nn.Module):
         
         encoded = self.encoder(x)
         ## now summed_info: [num_evts, decoder_dims[0]]
-        summed_info = scatter_mean(encoded, batch, dim=0)
+        summed_info = scatter_add(encoded, batch, dim=0)
 
             
         return self.decoder(summed_info)

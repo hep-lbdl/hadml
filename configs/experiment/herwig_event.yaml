@@ -29,7 +29,7 @@ wandb:
 seed: 12345
 
 trainer:
-  max_epochs: 99
+  max_epochs: 2000
   log_every_n_steps: 1
 
 callbacks:
@@ -48,8 +48,8 @@ datamodule:
 
 
 # ## override /model:
-# model:
-#   noise_dim: 64
+model:
+  noise_dim: 128
 #   generator:
 #     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
 #     hidden_dims: [256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
@@ -60,16 +60,17 @@ datamodule:
 #     word_embedding_dim: 16
 #     dropout: 0.3
 
-#   optimizer_generator:
+  optimizer_generator:
 #     _target_: torch.optim.RMSprop
-#     lr: 0.000005
+    lr: 0.00001
+    # lr: 0.000005
 
-#   optimizer_discriminator:
+  optimizer_discriminator:
 #     _target_: torch.optim.RMSprop
-#     lr: 0.0001
+    lr: 0.0001
   
-#   # criterion:
-#   #   __target__: torch.nn.BCELoss
+  criterion:
+    _target_: hadml.loss.loss.ls
 #   #   reduction: "mean"
 
 #   # optimizer_generator:
