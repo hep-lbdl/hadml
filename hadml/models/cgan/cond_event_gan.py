@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from pytorch_lightning import LightningModule
 from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
-from torch.optim import Optimizer
 
 from hadml.metrics.media_logger import log_images
     
@@ -191,7 +190,11 @@ class CondEventGANModule(LightningModule):
         """
         if self.comparison_fn is not None:
             ## compare the generated events with the real ones
-            self.comparison_fn(predictions, truths, outname)
+            images = self.comparison_fn(predictions, truths, outname)
+            if self.logger.experiment is not None:
+                log_images(self.logger, "Event GAN",
+                           list(images.values()),
+                           list(images.keys()))
             
             
     def validation_step(self, batch: Any, batch_idx: int):

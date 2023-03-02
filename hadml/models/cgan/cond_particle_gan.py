@@ -7,6 +7,7 @@ from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
 
+from hadml.metrics.media_logger import log_images
 
 class CondParticleGANModule(LightningModule):
     """Conditional GAN predicting particle momenta and types.
@@ -282,7 +283,11 @@ class CondParticleGANModule(LightningModule):
         """
         if self.comparison_fn is not None:
             ## compare the generated events with the real ones
-            _ = self.comparison_fn(predictions, truths, outname)
+            images = self.comparison_fn(predictions, truths, outname)
+            if self.logger.experiment is not None:
+                log_images(self.logger, "Particle GAN",
+                           images=list(images.values()), 
+                           caption=list(images.keys()))
             
             
     def validation_step(self, batch: Any, batch_idx: int):

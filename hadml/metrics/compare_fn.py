@@ -1,10 +1,12 @@
 import os
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any, Dict
 from pytorch_lightning.core.mixins import HyperparametersMixin
 
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+
+from .image_converter import fig_to_array
 
 def create_plots(nrows, ncols):
     fig, axs = plt.subplots(
@@ -29,8 +31,10 @@ class CompareParticles(HyperparametersMixin):
         
     def __call__(self, predictions: np.ndarray,
                 truths: np.ndarray,
-                tags: Optional[str] = None) -> None:
+                tags: Optional[str] = None) -> Dict[str, Any]:
         """Expect predictions = [batch_size, num_kinematics + num_particle_type_indices]."""
+        out_images = {}
+
         _, num_dims = truths.shape
         assert num_dims == self.hparams.num_kinematics + self.hparams.num_particles
         
@@ -63,9 +67,7 @@ class CompareParticles(HyperparametersMixin):
             plt.savefig(outname+"-angles.png")
             plt.savefig(outname+"-angles.pdf")
         ## convert the image to a numpy array
-        fig.tight_layout(pad=0)
-        fig.canvas.draw()
-        data_angle = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        out_images['particle kinematics'] = fig_to_array(fig)
         plt.close('all')
         
         ## figure out predicted particle type
@@ -92,10 +94,7 @@ class CompareParticles(HyperparametersMixin):
                 plt.savefig(outname+"-types.pdf")
 
             ## convert the image to a numpy array
-            fig.tight_layout(pad=0)
-            fig.canvas.draw()
-            data_type = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            out_images['particle type'] = fig_to_array(fig)
             plt.close('all')
-            return data_angle, data_type
-        else:
-            return data_angle, None
+
+        return out_images
