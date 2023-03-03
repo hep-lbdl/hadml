@@ -284,7 +284,7 @@ class CondParticleGANModule(LightningModule):
         if self.comparison_fn is not None:
             ## compare the generated events with the real ones
             images = self.comparison_fn(predictions, truths, outname)
-            if self.logger.experiment is not None:
+            if self.logger and self.logger.experiment is not None:
                 log_images(self.logger, "Particle GAN",
                            images=list(images.values()), 
                            caption=list(images.keys()))
