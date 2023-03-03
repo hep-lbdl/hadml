@@ -27,6 +27,8 @@ generator:
   output_dim: ${model.num_particle_kinematics}
   layer_norm: true
   dropout: 0.0
+  last_activation:
+    _target_: torch.nn.Tanh
 
 discriminator:
   _target_: hadml.models.components.deep_set.DeepSetModule

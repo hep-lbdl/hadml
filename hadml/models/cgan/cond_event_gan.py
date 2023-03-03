@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from pytorch_lightning import LightningModule
 from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
-from torch.optim import Optimizer
 
 from hadml.metrics.media_logger import log_images
     
@@ -160,13 +159,12 @@ class CondEventGANModule(LightningModule):
             ## with real batch
             x_truth = x_momenta if cond_info is None else torch.cat([cond_info, x_momenta], dim=1)
             score_truth = self.discriminator(x_truth, batch.batch).squeeze(-1)
-
-            label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
+            label = torch.full((len(score_truth),), real_label, dtype=torch.float).to(device)
             loss_real = self.criterion(score_truth, label)
 
             ## with fake batch            
             score_fakes = self.discriminator(x_generated.detach(), batch.batch).squeeze(-1)
-            fake_labels = torch.full((num_evts,), fake_label, dtype=torch.float).to(device)
+            fake_labels = torch.full((len(score_fakes),), fake_label, dtype=torch.float).to(device)
             loss_fake = self.criterion(score_fakes, fake_labels)
             
             loss_disc = (loss_real + loss_fake) / 2
@@ -182,7 +180,7 @@ class CondEventGANModule(LightningModule):
         if optimizer_idx == 1:
             score_fakes = self.discriminator(x_generated, batch.batch).squeeze(-1)
         
-            label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
+            label = torch.full((len(score_fakes),), real_label, dtype=torch.float).to(device)
             loss_gen = self.criterion(score_fakes, label)
             
             ## update and log metrics
@@ -227,7 +225,11 @@ class CondEventGANModule(LightningModule):
         """
         if self.comparison_fn is not None:
             ## compare the generated events with the real ones
-            self.comparison_fn(predictions, truths, outname)
+            images = self.comparison_fn(predictions, truths, outname)
+            if self.logger and self.logger.experiment is not None:
+                log_images(self.logger, "Event GAN",
+                           images=list(images.values()), 
+                           caption=list(images.keys()))
             
             
     def validation_step(self, batch: Any, batch_idx: int):

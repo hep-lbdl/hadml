@@ -2,6 +2,7 @@
 import os
 import pickle
 from typing import Any, Dict, Optional, Tuple
+import glob
 
 import numpy as np
 import pandas as pd
@@ -372,7 +373,11 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
 class HerwigEventDataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, raw_file_list=None):
         
-        self.raw_file_list = raw_file_list
+        # self.raw_file_list = raw_file_list
+        self.raw_file_list = []
+        for pattern in raw_file_list:
+            self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
+        self.raw_file_list = [os.path.basename(raw_file) for raw_file in self.raw_file_list]
         
         pids_map_path = os.path.join(root, pid_map_fname) if root is not None else pid_map_fname
         if os.path.exists(pids_map_path):

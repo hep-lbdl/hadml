@@ -29,7 +29,7 @@ wandb:
 seed: 12345
 
 trainer:
-  max_epochs: 2000
+  max_epochs: 3000
   log_every_n_steps: 1
 
 callbacks:
@@ -41,20 +41,22 @@ callbacks:
   
 # ## override /datamodule:
 datamodule:
-  batch_size: 250
+  batch_size: 10000
   num_workers: 8
   pin_memory: True
-  train_val_test_split: [500, 250, 250]
+  train_val_test_split: [26000, 10000, 10000]
 
 
 # ## override /model:
 model:
   noise_dim: 128
-#   generator:
+  generator:
+    hidden_dims: [256, 256, 256]
 #     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
 #     hidden_dims: [256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
 
-#   discriminator:
+  discriminator:
+    _target_: hadml.models.components.deep_set.ClusterInEventModule
 #     encoder_dims: [128, 128, 128, 128, 128, 128, 128, 128]
 #     decoder_dims: [128, 128, 128, 128, 256, 256, 256, 256]
 #     word_embedding_dim: 16
@@ -62,15 +64,19 @@ model:
 
   optimizer_generator:
 #     _target_: torch.optim.RMSprop
-    lr: 0.00001
+    lr: 0.000005
     # lr: 0.000005
 
   optimizer_discriminator:
 #     _target_: torch.optim.RMSprop
     lr: 0.0001
+
+  num_critics: 1
+  num_gen: 5
   
-  criterion:
-    _target_: hadml.loss.loss.ls
+  # criterion:
+    # _target_: hadml.loss.loss.ls
+    # _target_: hadml.loss.loss.wasserstein
 #   #   reduction: "mean"
 
 #   # optimizer_generator:
@@ -78,3 +84,6 @@ model:
 
 #   # optimizer_discriminator:
 #   #   lr: 0.000005
+
+  comparison_fn:
+    xranges: [[-1.57, 1.57], [-1.57, 1.57]]
