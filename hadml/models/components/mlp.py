@@ -57,7 +57,9 @@ class MLPModule(nn.Module):
             input_dim, hidden_dims, output_dim, layer_norm, dropout, last_activation)
         )
         
-    def forward(self, x) -> torch.Tensor:
+    def forward(self, x, *args) -> torch.Tensor:
+        if len(args) > 0:
+            x = torch.cat((x,) + args, dim=1)
         return self.model(x)
 
 
