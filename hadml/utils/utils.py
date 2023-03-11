@@ -2,13 +2,16 @@ import time
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Iterable
 
 import hydra
+import numpy as np
+import torch
 from omegaconf import DictConfig
 from pytorch_lightning import Callback
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.utilities import rank_zero_only
+from torch import nn
 
 from hadml.utils import pylogger, rich_utils
 
@@ -203,3 +206,32 @@ def close_loggers() -> None:
         if wandb.run:
             log.info("Closing wandb!")
             wandb.finish()
+
+
+def get_wasserstein_grad_penalty(D: nn.Module,
+                                 real_inputs: [Iterable[torch.Tensor], torch.Tensor],
+                                 fake_inputs: [Iterable[torch.Tensor], torch.Tensor]):
+    """Gradient penalty from https://arxiv.org/abs/1704.00028"""
+    if isinstance(real_inputs, torch.Tensor):
+        real_inputs = [real_inputs]
+    if isinstance(fake_inputs, torch.Tensor):
+        fake_inputs = [fake_inputs]
+    if (len(real_inputs) != len(fake_inputs) or 
+        np.any([real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)])
+    ):
+        raise ValueError("Inputs must match in length and shapes!")
+        
+    device = real_inputs[0].device
+    alphas = [torch.rand(x.shape[0], 1).to(device) for x in real_inputs]
+
+    interpolates = [alpha * real + ((1 - alpha) * fake)
+                    for alpha, real, fake in zip(alphas, real_inputs, fake_inputs)]
+    interpolates = [torch.autograd.Variable(x, requires_grad=True) for x in interpolates]
+    score = D(*interpolates)
+
+    gradients = torch.autograd.grad(outputs=score.sum(), inputs=interpolates,
+                              create_graph=True, retain_graph=True)
+    gradients = torch.cat(gradients, dim=1)
+
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    return gradient_penalty
