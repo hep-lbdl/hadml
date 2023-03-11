@@ -99,8 +99,24 @@ class MLPParticleModule(nn.Module):
         p_types = self.particle_type(type_encode)
         
         return p_kines, p_types
-    
-class MLPOneHotEmbeddingModule(nn.Module):
+
+
+class OneHotEmbeddingModule(nn.Module):
+    def __init__(
+            self,
+            vocab_size: int,
+    ):
+        super().__init__()
+        self.num_classes = vocab_size
+
+    def forward(self, x) -> torch.Tensor:
+        batch_size = x.shape[0]
+        x = x.view(-1)
+        embeds = F.one_hot(x, self.num_classes).view(batch_size, -1)
+        return embeds
+
+
+class MLPOneHotEmbeddingModule(OneHotEmbeddingModule):
     def __init__(
         self,
         vocab_size: int,
@@ -108,19 +124,17 @@ class MLPOneHotEmbeddingModule(nn.Module):
         output_dim: int,
         dropout: float = 0.0,
     ):
-        super().__init__()
-        self.num_classes = vocab_size
-            
+        super().__init__(vocab_size=vocab_size)
+
         # build the linear model
         self.model = nn.Sequential(*build_linear_layers(
             vocab_size, hidden_dims, output_dim, True, dropout)
         )
         
     def forward(self, x) -> torch.Tensor:
-        batch_size = x.shape[0]
-        x = x.view(-1)
-        embeds = F.one_hot(x, self.num_classes).view(batch_size, -1)
-        return  self.model(embeds)
+        embeds = super().forward(x)
+        return self.model(embeds)
+
 
 class MLPTypeEmbeddingModule(nn.Module):
     def __init__(
