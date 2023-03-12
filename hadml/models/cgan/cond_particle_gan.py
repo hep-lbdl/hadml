@@ -11,6 +11,7 @@ from hadml.metrics.media_logger import log_images
 from hadml.utils.utils import get_wasserstein_grad_penalty
 
 
+
 class CondParticleGANModule(LightningModule):
     """Conditional GAN predicting particle momenta and types.
     Parameters:
@@ -58,11 +59,11 @@ class CondParticleGANModule(LightningModule):
         self.discriminator = discriminator
         self.comparison_fn = comparison_fn
 
-        ## loss function
+        # loss function
         self.criterion = torch.nn.BCELoss()
         self.wasserstein_reg = wasserstein_reg
 
-        ## metric objects for calculating and averaging accuracy across batches
+        # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
         self.train_loss_disc = MeanMetric()
         self.val_wd = MeanMetric()
@@ -79,9 +80,9 @@ class CondParticleGANModule(LightningModule):
 
         self.use_particle_mlp = False
 
-        ## check if generator is a particle MLP,
-        ## which produces particle kinematics and types in one go.
-        ## In MLP case, we need to split the output into two parts.
+        # check if generator is a particle MLP,
+        # which produces particle kinematics and types in one go.
+        # In MLP case, we need to split the output into two parts.
         for name, module in self.generator.named_modules():
             if "MLPParticleModule" in name:
                 self.use_particle_mlp = True
@@ -101,7 +102,7 @@ class CondParticleGANModule(LightningModule):
         self, x_fake: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.generator(x_fake)
-    
+
     def _call_mlp_generator(self, x_fake: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         fakes = self.generator(x_fake)
         num_evts = x_fake.shape[0]
@@ -115,7 +116,7 @@ class CondParticleGANModule(LightningModule):
         opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters())  # type: ignore
         opt_disc = self.hparams.optimizer_discriminator(params=self.discriminator.parameters())  # type: ignore
 
-        ## define schedulers
+        # define schedulers
         if self.hparams.scheduler_generator is not None:
             sched_gen = self.hparams.scheduler_generator(optimizer=opt_gen)
             sched_disc = self.hparams.scheduler_discriminator(optimizer=opt_disc)
@@ -166,13 +167,13 @@ class CondParticleGANModule(LightningModule):
     def _generator_loss(self, score: torch.Tensor) -> torch.Tensor:
         loss_type = self.hparams.loss_type
         if loss_type == "wasserstein":
-            ## WGAN: https://arxiv.org/abs/1701.07875
+            # WGAN: https://arxiv.org/abs/1701.07875
             loss_gen = -score.mean(0).view(1)
         elif loss_type == "bce":
-            ## GAN: https://arxiv.org/abs/1406.2661
+            # GAN: https://arxiv.org/abs/1406.2661
             loss_gen = F.binary_cross_entropy_with_logits(score, torch.ones_like(score))
         elif loss_type == "ls":
-            ## least squares GAN: https://arxiv.org/abs/1611.04076
+            # least squares GAN: https://arxiv.org/abs/1611.04076
             loss_gen = 0.5 * ((score - 1) ** 2).mean(0).view(1)
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
@@ -211,7 +212,7 @@ class CondParticleGANModule(LightningModule):
 
         noise = self.generate_noise(num_evts).to(device)
 
-        ## generate fake batch
+        # generate fake batch
         particle_kinematics, particle_types = self(noise, cond_info)
         if self.embedding_module is None:
             particle_type_data = torch.argmax(particle_types, dim=1)
@@ -224,10 +225,10 @@ class CondParticleGANModule(LightningModule):
             else torch.cat([cond_info, particle_kinematics], dim=1)
 
         #######################
-        ##  Train discriminator
+        #  Train discriminator
         #######################
         if optimizer_idx == 0:
-            ## with real batch
+            # with real batch
             x_truth = (
                 x_momenta
                 if cond_info is None
@@ -235,7 +236,7 @@ class CondParticleGANModule(LightningModule):
             )
             score_truth = self.discriminator(x_truth, x_type_data).squeeze(-1)
 
-            ## with fake batch
+            # with fake batch
             score_fakes = self.discriminator(x_generated.detach(), particle_type_data.detach()).squeeze(-1)
 
             loss_disc = self._discriminator_loss(score_truth, score_fakes)
@@ -248,7 +249,7 @@ class CondParticleGANModule(LightningModule):
                     [x_generated.detach(), particle_type_data.detach()],
                 ) * self.wasserstein_reg
 
-            ## update and log metrics
+            # update and log metrics
             self.train_loss_disc(loss_disc)
             self.log("lossD", loss_disc, prog_bar=True)
             if self.wasserstein_reg > 0:
@@ -258,13 +259,13 @@ class CondParticleGANModule(LightningModule):
             return {"loss": loss_disc + wasserstein_grad_penalty}
 
         #######################
-        ## Train generator ####
+        # Train generator ####
         #######################
         if optimizer_idx == 1:
             score_fakes = self.discriminator(x_generated, particle_type_data).squeeze(-1)
             loss_gen = self._generator_loss(score_fakes)
 
-            ## update and log metrics
+            # update and log metrics
             self.train_loss_gen(loss_gen)
             self.log("lossG", loss_gen, prog_bar=True)
             return {"loss": loss_gen}
@@ -279,7 +280,7 @@ class CondParticleGANModule(LightningModule):
         cond_info, x_momenta, x_type_indices = batch
         num_evts, _ = x_momenta.shape
 
-        ## generate events from the Generator
+        # generate events from the Generator
         noise = self.generate_noise(num_evts).to(x_momenta.device)
         particle_kinematics, particle_types = self(noise, cond_info)
         particle_type_idx = torch.argmax(particle_types, dim=1).reshape(num_evts, -1)
@@ -287,8 +288,8 @@ class CondParticleGANModule(LightningModule):
 
         avg_nll = 0
         if x_type_indices is not None:
-            ## evaluate the accuracy of hadron types
-            ## with likelihood ratio
+            # evaluate the accuracy of hadron types
+            # with likelihood ratio
             for pidx in range(self.hparams.num_output_particles):
                 pidx_start = pidx * self.hparams.num_particle_ids
                 pidx_end = pidx_start + self.hparams.num_particle_ids
@@ -300,11 +301,11 @@ class CondParticleGANModule(LightningModule):
                 avg_nll += nll
 
             avg_nll = avg_nll / self.hparams.num_output_particles
-        
+
         predictions = torch.cat([particle_kinematics, particle_type_idx], dim=1).cpu().detach().numpy()
         truths = torch.cat([x_momenta, x_type_indices], dim=1).cpu().detach().numpy()
 
-        ## compute the WD for the particle kinmatics
+        # compute the WD for the particle kinmatics
         x_momenta = x_momenta.cpu().detach().numpy()
         particle_kinematics = particle_kinematics.cpu().detach().numpy()
         distances = [
@@ -326,7 +327,7 @@ class CondParticleGANModule(LightningModule):
             perf: dictionary from the step function
         """
         if self.comparison_fn is not None:
-            ## compare the generated events with the real ones
+            # compare the generated events with the real ones
             images = self.comparison_fn(predictions, truths, outname)
             if self.logger and self.logger.experiment is not None:
                 log_images(
@@ -342,7 +343,7 @@ class CondParticleGANModule(LightningModule):
         wd_distance = perf["wd"]
         avg_nll = perf["nll"]
 
-        ## update and log metrics
+        # update and log metrics
         self.val_wd(wd_distance)
         self.val_nll(avg_nll)
 
@@ -366,8 +367,8 @@ class CondParticleGANModule(LightningModule):
         return perf, batch_idx
 
     def validaton_epoch_end(self, outputs: List[Any]):
-        ## `outputs` is a list of dicts returned from `validation_step()`
-        ## Need it in multiple GPUs training.
+        # `outputs` is a list of dicts returned from `validation_step()`
+        # Need it in multiple GPUs training.
         pass
 
     def test_step(self, batch: Any, batch_idx: int):
@@ -376,7 +377,7 @@ class CondParticleGANModule(LightningModule):
         wd_distance = perf["wd"]
         avg_nll = perf["nll"]
 
-        ## update and log metrics
+        # update and log metrics
         self.test_wd(wd_distance)
         self.test_nll(avg_nll)
         self.test_wd_best(wd_distance)
@@ -386,7 +387,7 @@ class CondParticleGANModule(LightningModule):
         self.log("test/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test/wd_best", self.test_wd_best.compute(), prog_bar=True)
         self.log("test/nll_best", self.test_nll_best.compute(), prog_bar=True)
-        ## comparison
+        # comparison
         if (
             avg_nll <= self.test_nll_best.compute()
             or wd_distance <= self.test_wd_best.compute()
