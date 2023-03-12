@@ -2,7 +2,7 @@ import time
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Iterable
+from typing import Callable, List, Iterable, Tuple
 
 import hydra
 import numpy as np
@@ -209,18 +209,17 @@ def close_loggers() -> None:
 
 
 def get_wasserstein_grad_penalty(D: nn.Module,
-                                 real_inputs: [Iterable[torch.Tensor], torch.Tensor],
-                                 fake_inputs: [Iterable[torch.Tensor], torch.Tensor]):
+                                 real_inputs: Tuple(Iterable[torch.Tensor], torch.Tensor),
+                                 fake_inputs: Tuple(Iterable[torch.Tensor], torch.Tensor)):
     """Gradient penalty from https://arxiv.org/abs/1704.00028"""
     if isinstance(real_inputs, torch.Tensor):
         real_inputs = [real_inputs]
     if isinstance(fake_inputs, torch.Tensor):
         fake_inputs = [fake_inputs]
-    if (len(real_inputs) != len(fake_inputs) or 
-        np.any([real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)])
-    ):
+    if (len(real_inputs) != len(fake_inputs)) or \
+       np.any([real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)]):
         raise ValueError("Inputs must match in length and shapes!")
-        
+
     device = real_inputs[0].device
     alphas = [torch.rand(x.shape[0], 1).to(device) for x in real_inputs]
 
@@ -230,7 +229,7 @@ def get_wasserstein_grad_penalty(D: nn.Module,
     score = D(*interpolates)
 
     gradients = torch.autograd.grad(outputs=score.sum(), inputs=interpolates,
-                              create_graph=True, retain_graph=True)
+                                    create_graph=True, retain_graph=True)
     gradients = torch.cat(gradients, dim=1)
 
     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()

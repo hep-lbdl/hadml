@@ -188,7 +188,7 @@ class MLPWithEmbeddingModule(nn.Module):
         self,
         input_dim: int,
         vocab_size: int,
-        word_embedding_dim: int,  ## only used if embedding_type is dense
+        word_embedding_dim: int,  # only used if embedding_type is dense
         num_words: int,
         encoder_dims: List[int],
         decoder_dims: List[int],
@@ -227,7 +227,7 @@ class MLPWithEmbeddingModule(nn.Module):
         normal_embeds = self.normal_mlp(x)
         num_particles = type_ids.shape[1]
 
-        ## same MLP acting on different particles
+        # same MLP acting on different particles
         type_embeds = [self.type_mlp(type_ids[:, i]) for i in range(num_particles)]
 
         decoder_embds = self.decoder(torch.cat([normal_embeds] + type_embeds, dim=1))

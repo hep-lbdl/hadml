@@ -9,11 +9,11 @@ from torch_geometric.data.dataset import Dataset as GeometricDataset
 
 class GANDataProtocol(Protocol):
     """Define a protocol for GAN data modules."""
-    
+
     def prepare_data(self) -> None:
         """Prepare data for training and validation.
         Before the create_dataset function is called."""
-    
+
     def create_dataset(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Create dataset from core dataset.
         Returns:
@@ -31,19 +31,19 @@ class ParticleGANDataModule(LightningDataModule):
         pin_memory: bool = False,
     ):
         super().__init__()
-        
+
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False, ignore=['core_dataset'])
         self.core_dataset = core_dataset
-        
+
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
-        
+
     def prepare_data(self):
-        ## read the original file, determine the number of particle types
-        ## and create a map.
+        # read the original file, determine the number of particle types
+        # and create a map.
         self.core_dataset.prepare_data()
 
     def setup(self, stage: Optional[str] = None):
@@ -60,7 +60,7 @@ class ParticleGANDataModule(LightningDataModule):
                 lengths=self.core_dataset.hparams.train_val_test_split,
                 generator=torch.Generator().manual_seed(42),
             )
-            
+
     def train_dataloader(self):
         return DataLoader(
             dataset=self.data_train,
@@ -87,7 +87,7 @@ class ParticleGANDataModule(LightningDataModule):
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
         )
-        
+
     def teardown(self, stage: Optional[str] = None):
         """Clean up after fit or test."""
         pass
@@ -99,7 +99,7 @@ class ParticleGANDataModule(LightningDataModule):
     def load_state_dict(self, state_dict: Dict[str, Any]):
         """Things to do when loading checkpoint."""
         pass
-    
+
 class EventGANDataModule(LightningDataModule):
     def __init__(
         self,
@@ -110,12 +110,12 @@ class EventGANDataModule(LightningDataModule):
         pin_memory: bool = False,
     ):
         super().__init__()
-        
+
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False, ignore=['core_dataset'])
         self.dataset = dataset
-        
+
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
@@ -133,7 +133,7 @@ class EventGANDataModule(LightningDataModule):
                 lengths=self.hparams.train_val_test_split,
                 generator=torch.Generator().manual_seed(42),
             )
-            
+
     def train_dataloader(self):
         return GeometricDataLoader(
             dataset=self.data_train,
