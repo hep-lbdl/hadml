@@ -13,7 +13,7 @@
 
 defaults:
   - override /datamodule: herwig.yaml
-  - override /model: cond_particle_gan.yaml
+  - override /model: cond_particle_gan_separate_embedding.yaml
   - override /callbacks: default.yaml
   - override /trainer: gpu.yaml
 
@@ -25,7 +25,7 @@ tags: ["herwig", "allhadrons"]
 seed: 12345
 
 trainer:
-  max_epochs: 1
+  max_epochs: 3
   val_check_interval: 50
 
 callbacks:
@@ -46,10 +46,11 @@ datamodule:
 model:
   noise_dim: 64
   # loss_type: "wasserstein" ## "wasserstein" or "bce" or "ls"
-  loss_type: "ls"
+  loss_type: "wasserstein"
+  wasserstein_reg: 1.0
 
   ## how often the optimizers will be used.
-  num_critics: 1
+  num_critics: 10
   num_gen: 1
 
   generator:
@@ -57,9 +58,7 @@ model:
     hidden_dims: ${gen_list:256,10} # = [256]*10
 
   discriminator:
-    encoder_dims: ${gen_list:128,8} # = [128, 128, 128, 128, 128, 128, 128, 128]
-    decoder_dims: ${gen_list:128,8} # = [128, 128, 128, 128, 128, 128, 128, 128]
-    word_embedding_dim: 10
+    hidden_dims: ${gen_list:128,8} # = [128, 128, 128, 128, 128, 128, 128, 128]
     dropout: 0
   
   
