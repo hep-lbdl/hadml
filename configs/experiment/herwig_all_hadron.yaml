@@ -50,7 +50,7 @@ model:
   wasserstein_reg: 1.0
 
   ## how often the optimizers will be used.
-  num_critics: 10
+  num_critics: 5
   num_gen: 1
 
   generator:
