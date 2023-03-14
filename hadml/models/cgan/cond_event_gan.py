@@ -30,6 +30,7 @@ class CondEventGANModule(LightningModule):
         optimizer_discriminator: discriminator optimizer
         comparison_fn: function to compare generated and real data
     """
+
     def __init__(
         self,
         noise_dim: int,
@@ -47,7 +48,9 @@ class CondEventGANModule(LightningModule):
         super().__init__()
 
         self.save_hyperparameters(
-            logger=False, ignore=["generator", "discriminator", "comparison_fn", "criterion"])
+            logger=False,
+            ignore=["generator", "discriminator", "comparison_fn", "criterion"],
+        )
 
         # Important: This property activates manual optimization.
         self.automatic_optimization = False
@@ -74,19 +77,21 @@ class CondEventGANModule(LightningModule):
         self.test_wd_best = MinMetric()
         self.test_nll_best = MinMetric()
 
-    def forward(self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         x_fake = conditional_cat(cond_info, noise, dim=1)
         fakes = self.generator(x_fake)
         return fakes
 
     def configure_optimizers(self):
-        opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters())           # type: ignore
+        opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters())  # type: ignore
         opt_disc = self.hparams.optimizer_discriminator(params=self.discriminator.parameters())  # type: ignore
 
         return opt_disc, opt_gen
 
     def generate_noise(self, num_evts: int):
-        return torch.randn(num_evts, self.hparams.noise_dim)    # type: ignore
+        return torch.randn(num_evts, self.hparams.noise_dim)  # type: ignore
 
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
@@ -100,16 +105,11 @@ class CondEventGANModule(LightningModule):
         real_label = 1
         fake_label = 0
 
-        x_generated = self._discriminator_step(batch,
-                                               fake_label,
-                                               real_label)
+        x_generated = self._discriminator_step(batch, fake_label, real_label)
 
         self._generator_step(batch, x_generated, real_label)
 
-    def _generator_step(self,
-                        batch: Any,
-                        x_generated: torch.Tensor,
-                        real_label: int):
+    def _generator_step(self, batch: Any, x_generated: torch.Tensor, real_label: int):
         _, opt_gen = self.optimizers()
         num_evts = batch.num_graphs
         device = batch.x.device
@@ -127,10 +127,9 @@ class CondEventGANModule(LightningModule):
         self.train_loss_gen(loss_gen)
         self.log("lossG", loss_gen, prog_bar=True)
 
-    def _discriminator_step(self,
-                            batch: Any,
-                            fake_label: int,
-                            real_label: int) -> torch.Tensor:
+    def _discriminator_step(
+        self, batch: Any, fake_label: int, real_label: int
+    ) -> torch.Tensor:
         opt_disc, _ = self.optimizers()
         num_evts = batch.num_graphs
         num_particles = batch.num_nodes
@@ -194,8 +193,7 @@ class CondEventGANModule(LightningModule):
         ]
         wd_distance = sum(distances) / len(distances)
 
-        return {"wd": wd_distance, "nll": 0., "preds": predictions, "truths": truths}
-
+        return {"wd": wd_distance, "nll": 0.0, "preds": predictions, "truths": truths}
 
     def compare(self, predictions, truths, outname) -> None:
         """Compare the generated events with the real ones
@@ -206,16 +204,18 @@ class CondEventGANModule(LightningModule):
             # compare the generated events with the real ones
             images = self.comparison_fn(predictions, truths, outname)
             if self.logger and self.logger.experiment is not None:
-                log_images(self.logger, "Event GAN",
-                           images=list(images.values()),
-                           caption=list(images.keys()))
-
+                log_images(
+                    self.logger,
+                    "Event GAN",
+                    images=list(images.values()),
+                    caption=list(images.keys()),
+                )
 
     def validation_step(self, batch: Any, batch_idx: int):
         """Validation step"""
         perf = self.step(batch, batch_idx)
-        wd_distance = perf['wd']
-        avg_nll = perf['nll']
+        wd_distance = perf["wd"]
+        avg_nll = perf["nll"]
 
         # update and log metrics
         self.val_wd(wd_distance)
@@ -229,11 +229,13 @@ class CondEventGANModule(LightningModule):
         self.log("val/min_avg_wd", self.val_min_avg_wd.compute(), prog_bar=True)
         self.log("val/min_avg_nll", self.val_min_avg_nll.compute(), prog_bar=True)
 
-        if avg_nll <= self.val_min_avg_nll.compute() or \
-           wd_distance <= self.val_min_avg_wd.compute():
+        if (
+            avg_nll <= self.val_min_avg_nll.compute()
+            or wd_distance <= self.val_min_avg_wd.compute()
+        ):
             outname = f"val-{self.current_epoch}-{batch_idx}"
-            predictions = perf['preds']
-            truths = perf['truths']
+            predictions = perf["preds"]
+            truths = perf["truths"]
             self.compare(predictions, truths, outname)
 
         return perf, batch_idx
@@ -241,8 +243,8 @@ class CondEventGANModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
         perf = self.step(batch, batch_idx)
-        wd_distance = perf['wd']
-        avg_nll = perf['nll']
+        wd_distance = perf["wd"]
+        avg_nll = perf["nll"]
 
         # update and log metrics
         self.test_wd(wd_distance)
@@ -255,11 +257,13 @@ class CondEventGANModule(LightningModule):
         self.log("test/wd_best", self.test_wd_best.compute(), prog_bar=True)
         self.log("test/nll_best", self.test_nll_best.compute(), prog_bar=True)
         # comparison
-        if avg_nll <= self.test_nll_best.compute() or \
-           wd_distance <= self.test_wd_best.compute():
+        if (
+            avg_nll <= self.test_nll_best.compute()
+            or wd_distance <= self.test_wd_best.compute()
+        ):
             outname = f"test-{self.current_epoch}-{batch_idx}"
-            predictions = perf['preds']
-            truths = perf['truths']
+            predictions = perf["preds"]
+            truths = perf["truths"]
             self.compare(predictions, truths, outname)
 
         return perf, batch_idx

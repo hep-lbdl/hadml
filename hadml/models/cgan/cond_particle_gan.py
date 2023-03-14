@@ -102,13 +102,16 @@ class CondParticleGANModule(LightningModule):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.generator(x_fake)
 
-    def _call_mlp_generator(self, x_fake: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _call_mlp_generator(
+        self, x_fake: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         fakes = self.generator(x_fake)
         num_evts = x_fake.shape[0]
 
-        particle_kinematics = fakes[:, :self.hparams.num_particle_kinematics]       # type: ignore
-        particle_types = fakes[:, self.hparams.num_particle_kinematics:].reshape(   # type: ignore
-            num_evts * self.hparams.num_output_particles, -1)                       # type: ignore
+        particle_kinematics = fakes[:, : self.hparams.num_particle_kinematics]  # type: ignore
+        particle_types = fakes[:, self.hparams.num_particle_kinematics :].reshape(  # type: ignore
+            num_evts * self.hparams.num_output_particles, -1
+        )  # type: ignore
         return particle_kinematics, particle_types
 
     def configure_optimizers(self):
@@ -191,8 +194,9 @@ class CondParticleGANModule(LightningModule):
                 score_fake, torch.zeros_like(score_fake)
             )
         elif loss_type == "ls":
-            loss_disc = 0.5 * ((score_real - 1) ** 2).mean(0).view(1) + \
-                0.5 * (score_fake ** 2).mean(0).view(1)
+            loss_disc = 0.5 * ((score_real - 1) ** 2).mean(0).view(1) + 0.5 * (
+                score_fake**2
+            ).mean(0).view(1)
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
         return loss_disc
@@ -206,18 +210,21 @@ class CondParticleGANModule(LightningModule):
         num_evts = x_momenta.shape[0]
         device = x_momenta.device
 
-        particle_type_data, x_generated = self._prepare_fake_batch(cond_info, num_evts, device)
+        particle_type_data, x_generated = self._prepare_fake_batch(
+            cond_info, num_evts, device
+        )
 
         if optimizer_idx == 0:
-            return self._discriminator_step(cond_info, particle_type_data, x_generated, x_momenta, x_type_data)
+            return self._discriminator_step(
+                cond_info, particle_type_data, x_generated, x_momenta, x_type_data
+            )
 
         if optimizer_idx == 1:
             return self._generator_step(particle_type_data, x_generated)
 
-    def _prepare_fake_batch(self,
-                            cond_info: Optional[torch.Tensor],
-                            num_evts: int,
-                            device: torch.device) -> (torch.Tensor, torch.Tensor):
+    def _prepare_fake_batch(
+        self, cond_info: Optional[torch.Tensor], num_evts: int, device: torch.device
+    ) -> (torch.Tensor, torch.Tensor):
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
@@ -226,14 +233,16 @@ class CondParticleGANModule(LightningModule):
             particle_type_data = particle_type_data.reshape(num_evts, -1)
         else:
             particle_type_data = F.gumbel_softmax(particle_types, 0.1)
-            particle_type_data = particle_type_data.reshape(particle_kinematics.shape[0], -1)
+            particle_type_data = particle_type_data.reshape(
+                particle_kinematics.shape[0], -1
+            )
 
         x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
         return particle_type_data, x_generated
 
-    def _generator_step(self,
-                        particle_type_data: torch.Tensor,
-                        x_generated: torch.Tensor):
+    def _generator_step(
+        self, particle_type_data: torch.Tensor, x_generated: torch.Tensor
+    ):
         score_fakes = self.discriminator(x_generated, particle_type_data).squeeze(-1)
         loss_gen = self._generator_loss(score_fakes)
 
@@ -242,26 +251,33 @@ class CondParticleGANModule(LightningModule):
         self.log("lossG", loss_gen, prog_bar=True)
         return {"loss": loss_gen}
 
-    def _discriminator_step(self,
-                            cond_info: Optional[torch.Tensor],
-                            particle_type_data: torch.Tensor,
-                            x_generated: torch.Tensor,
-                            x_momenta: torch.Tensor,
-                            x_type_data: torch.Tensor):
+    def _discriminator_step(
+        self,
+        cond_info: Optional[torch.Tensor],
+        particle_type_data: torch.Tensor,
+        x_generated: torch.Tensor,
+        x_momenta: torch.Tensor,
+        x_type_data: torch.Tensor,
+    ):
         # with real batch
         x_truth = conditional_cat(cond_info, x_momenta, dim=1)
 
         score_truth = self.discriminator(x_truth, x_type_data).squeeze(-1)
         # with fake batch
-        score_fakes = self.discriminator(x_generated.detach(), particle_type_data.detach()).squeeze(-1)
+        score_fakes = self.discriminator(
+            x_generated.detach(), particle_type_data.detach()
+        ).squeeze(-1)
         loss_disc = self._discriminator_loss(score_truth, score_fakes)
         wasserstein_grad_penalty = 0
         if self.wasserstein_reg > 0:
-            wasserstein_grad_penalty = get_wasserstein_grad_penalty(
-                self.discriminator,
-                [x_truth, x_type_data],
-                [x_generated.detach(), particle_type_data.detach()],
-            ) * self.wasserstein_reg
+            wasserstein_grad_penalty = (
+                get_wasserstein_grad_penalty(
+                    self.discriminator,
+                    [x_truth, x_type_data],
+                    [x_generated.detach(), particle_type_data.detach()],
+                )
+                * self.wasserstein_reg
+            )
         # update and log metrics
         self.train_loss_disc(loss_disc)
         self.log("lossD", loss_disc, prog_bar=True)
@@ -296,14 +312,21 @@ class CondParticleGANModule(LightningModule):
                 pidx_end = pidx_start + self.hparams.num_particle_ids
                 gen_types = particle_types[:, pidx_start:pidx_end]
                 # print(gen_types.shape, x_type_indices[:, pidx].shape, pidx_start, pidx_end, particle_types.shape)
-                log_probability = gen_types if self.use_particle_mlp else F.log_softmax(gen_types, dim=1)
-                nll = float(F.nll_loss(log_probability,
-                            x_type_indices[:, pidx]))
+                if self.use_particle_mlp:
+                    log_probability = gen_types
+                else:
+                    log_probability = F.log_softmax(gen_types, dim=1)
+                nll = float(F.nll_loss(log_probability, x_type_indices[:, pidx]))
                 avg_nll += nll
 
             avg_nll = avg_nll / self.hparams.num_output_particles
 
-        predictions = torch.cat([particle_kinematics, particle_type_idx], dim=1).cpu().detach().numpy()
+        predictions = (
+            torch.cat([particle_kinematics, particle_type_idx], dim=1)
+            .cpu()
+            .detach()
+            .numpy()
+        )
         truths = torch.cat([x_momenta, x_type_indices], dim=1).cpu().detach().numpy()
 
         # compute the WD for the particle kinmatics
