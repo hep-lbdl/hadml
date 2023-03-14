@@ -1,0 +1,90 @@
+# @package _global_
+
+# start the environment
+# conda-start torch
+
+# to execute this experiment run:
+# python hadml/train.py experiment=herwig_all_hadron
+## to add a logger
+# python hadml/train.py experiment=herwig_all_hadron logger=wandb
+
+## with training techniques
+# python hadml/train.py experiment=herwig_all_hadron logger=wandb +trainer.gradient_clip_val=0.5
+
+defaults:
+  - override /datamodule: herwig.yaml
+  - override /model: cond_particle_gan_new.yaml
+  - override /callbacks: default.yaml
+  - override /trainer: gpu.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+task_name: "herwigAllhadron"
+tags: ["herwig", "allhadrons"]
+
+seed: 12345
+
+trainer:
+  max_epochs: 1
+  val_check_interval: 50
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/min_avg_wd"
+    mode: "min"
+    save_top_k: 5
+  
+## override /datamodule:
+datamodule:
+  batch_size: 5_000
+  pin_memory: True
+  core_dataset:
+    train_val_test_split: [5_000_000, 5_000, 5_000]
+
+
+## override /model:
+model:
+  noise_dim: 64
+  # loss_type: "wasserstein" ## "wasserstein" or "bce" or "ls"
+  loss_type: "ls"
+
+  ## how often the optimizers will be used.
+  num_critics: 1
+  num_gen: 1
+
+  generator:
+    input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
+    hidden_dims: ${gen_list:256,10} # = [256]*10
+
+  discriminator:
+    encoder_dims: ${gen_list:128,8} # = [128, 128, 128, 128, 128, 128, 128, 128]
+    decoder_dims: ${gen_list:128,8} # = [128, 128, 128, 128, 128, 128, 128, 128]
+    word_embedding_dim: 10
+    dropout: 0
+  
+  
+  # criterion:
+  #   __target__: torch.nn.BCELoss
+  #   reduction: "mean"
+
+  # optimizer_generator:
+  #   lr: 0.000001
+
+  # optimizer_discriminator:
+  #   lr: 0.000005
+
+
+#   scheduler_generator:
+#   # _target_: torch.optim.lr_scheduler.ExponentialLR
+#   _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+#   _partial_: true
+#   T_0: 1
+#   T_mult: 2
+#   eta_min: 0.00001
+
+# scheduler_discriminator:
+#   _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+#   _partial_: true
+#   T_0: 1
+#   T_mult: 2
+#   eta_min: 0.0001
