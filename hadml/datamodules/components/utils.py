@@ -23,13 +23,13 @@ def read_dataframe(filename, sep=",", engine=None):
         print(filename)
         df_list = [
             pd.read_csv(f, sep=sep, header=None, names=None, engine=engine)
-                for f in filename
+            for f in filename
         ]
         df = pd.concat(df_list, ignore_index=True)
         filename = filename[0]
     else:
-        df = pd.read_csv(filename, sep=sep, 
-                    header=None, names=None, engine=engine)
+        df = pd.read_csv(filename, sep=sep,
+                         header=None, names=None, engine=engine)
     return df
 
 
@@ -44,21 +44,21 @@ def xyz2hep(px, py, pz):
     p = np.sqrt(px**2 + py**2 + pz**2)
     pt = np.sqrt(px**2 + py**2)
     phi = np.arctan2(py, px)
-    theta = np.arccos(pz/p)
-    eta = -np.log(np.tan(0.5*theta))
-    return pt,eta,phi
+    theta = np.arccos(pz / p)
+    eta = -np.log(np.tan(0.5 * theta))
+    return pt, eta, phi
 
 
 def calculate_mass(lorentz_vector: np.ndarray) -> float:
     """ To calculate the invariant mass of a particle given its 4-vector.
-    
+
     Args:
         lorentz_vector: 4 vector [E, px, py, pz]
-    
+
     Returns:
         invariant mass
     """
-    sum_p2 = sum([lorentz_vector[idx]**2 for idx in range(1,4)])
+    sum_p2 = sum([lorentz_vector[idx]**2 for idx in range(1, 4)])
     return np.sqrt(lorentz_vector[0]**2 - sum_p2)
 
 
@@ -78,8 +78,8 @@ def create_boost_fn(cluster_4vec: np.ndarray):
         n_dot_p = np.sum((n * p))
         E_prime = gamma * (E - v_mag * n_dot_p)
         P_prime = p + (gamma - 1) * n_dot_p * n - gamma * E * v_mag * n
-        return np.array([E_prime]+ P_prime.tolist())
-    
+        return np.array([E_prime] + P_prime.tolist())
+
     def inv_boost_fn(boost_4vec: np.ndarray):
         """4vecot [E, px, py, pz] in boost frame (aka cluster frame)"""
         E_prime = boost_4vec[0]
@@ -87,7 +87,7 @@ def create_boost_fn(cluster_4vec: np.ndarray):
         n_dot_p = np.sum((n * P_prime))
         E = gamma * (E_prime + v_mag * n_dot_p)
         p = P_prime + (gamma - 1) * n_dot_p * n + gamma * E_prime * v_mag * n
-        return np.array([E]+ p.tolist())
+        return np.array([E] + p.tolist())
 
     return boost_fn, inv_boost_fn
 
@@ -98,7 +98,7 @@ def boost(a_row: np.ndarray):
     assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
     boost_fn, _ = create_boost_fn(a_row[:4])
     n_particles = len(a_row) // 4
-    results = [boost_fn(a_row[4*x: 4*(x+1)]) for x in range(n_particles)]
+    results = [boost_fn(a_row[4 * x: 4 * (x + 1)]) for x in range(n_particles)]
     return list(itertools.chain(*[x.tolist() for x in results]))
 
 
@@ -116,7 +116,7 @@ def inv_boost(a_row: np.ndarray):
 class InputScaler:
     def __init__(self, feature_range=(-0.99999, 0.99999)):
         self.scaler = MinMaxScaler(feature_range=feature_range)
-        
+
     def transform(self, df, outname=None):
         out_df = self.scaler.fit_transform(df)
         if outname is not None:
@@ -132,20 +132,20 @@ class InputScaler:
         return self
 
     def dump(self):
-        print("Min and Max for inputs: {",\
-            ", ".join(["{:.6f}".format(x) for x in self.scaler.data_min_]),\
-            ", ".join(["{:.6f}".format(x) for x in self.scaler.data_max_]), "}")
-        
-        
+        print("Min and Max for inputs: {",
+              ", ".join(["{:.6f}".format(x) for x in self.scaler.data_min_]),
+              ", ".join(["{:.6f}".format(x) for x in self.scaler.data_max_]), "}")
+
+
 def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
     """
     Read the input data from a file and return a data for training a GAN
     """
     if type(filename) == list:
         if len(filename) > 1:
-            print(len(filename),"too many files!")
+            print(len(filename), "too many files!")
         filename = filename[0]
-    
+
     arrays = np.load(filename)
     truth_in = arrays['out_truth'].astype(np.float32)
     cond_info = arrays['cond_info'].astype(np.float32)
@@ -157,13 +157,13 @@ def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
     # Split the data into training and testing
     # <HACK, FIXME, NOTE>
     # <HACK, For now a maximum of 10,000 events are used for testing, xju>
-    
+
     if max_evts:
         print(f"Using {max_evts:,} events out of {truth_in.shape[0]:,} events")
     else:
         max_evts = truth_in.shape[0]
 
-    num_test_evts = int(max_evts*testing_frac)
+    num_test_evts = int(max_evts * testing_frac)
     print(f"{max_evts - num_test_evts} for training and {num_test_evts} for testing")
     if num_test_evts < 10_000:
         print("WARNING: num_test_evts < 10_000")
@@ -178,7 +178,7 @@ def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
 def create_dataloader(filename, batch_size, num_workers, max_evts=None, testing_frac=0.1):
     import torch
     from torch.utils.data import TensorDataset, DataLoader
-    
+
     train_cond, train_truth, test_cond, test_truth, xlabels = read(
         filename, max_evts, testing_frac)
     train_cond = torch.from_numpy(train_cond)
@@ -193,4 +193,3 @@ def create_dataloader(filename, batch_size, num_workers, max_evts=None, testing_
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
     return train_loader, test_loader, xlabels
-

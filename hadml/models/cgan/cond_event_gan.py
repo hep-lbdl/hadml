@@ -1,7 +1,6 @@
 from typing import Any, List, Optional, Dict, Callable, Tuple
 
 import torch
-import torch.nn.functional as F
 from pytorch_lightning import LightningModule
 from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
@@ -13,12 +12,12 @@ class CondEventGANModule(LightningModule):
     """Event GAN module to generate events.
     The conditional inputs feeding to the gnerator are cluster's 4 vector.
     The generator will generate kinematics of the outgoing particles.
-    
+
     The discriminator will take the generated events and the real events as inputs,
     and output a probability of the generated events being real.
-    
+
     Have not considered the particle types for now.
-    
+
     Parameters:
         noise_dim: dimension of noise vector
         num_particle_ids: maximum number of particle types
@@ -49,37 +48,37 @@ class CondEventGANModule(LightningModule):
         comparison_fn: Optional[Callable] = None,
     ):
         super().__init__()
-        
+
         self.save_hyperparameters(
             logger=False, ignore=["generator", "discriminator", "comparison_fn", "criterion"])
-        
+
         self.generator = generator
         self.discriminator = discriminator
         self.comparison_fn = comparison_fn
-        
-        ## loss function
+
+        # loss function
         self.criterion = criterion
-        
-        ## metric objects for calculating and averaging accuracy across batches
+
+        # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
         self.train_loss_disc = MeanMetric()
         self.val_wd = MeanMetric()
         self.val_nll = MeanMetric()
-        
+
         # for tracking best so far
         self.val_min_avg_wd = MinMetric()
         self.val_min_avg_nll = MinMetric()
-        
+
         self.test_wd = MeanMetric()
         self.test_nll = MeanMetric()
         self.test_wd_best = MinMetric()
         self.test_nll_best = MinMetric()
-        
+
     def forward(self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         x_fake = noise if cond_info is None else torch.concat([cond_info, noise], dim=1)
         fakes = self.generator(x_fake)
         return fakes
-    
+
     def configure_optimizers(self):
         opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters()) # type: ignore
         opt_disc = self.hparams.optimizer_discriminator(params=self.discriminator.parameters()) # type: ignore
@@ -127,7 +126,7 @@ class CondEventGANModule(LightningModule):
     
     def generate_noise(self, num_evts: int):
         return torch.randn(num_evts, self.hparams.noise_dim)    # type: ignore
-    
+
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
         # so we need to make sure val_acc_best doesn't store accuracy from these checks
@@ -158,7 +157,7 @@ class CondEventGANModule(LightningModule):
         x_generated = inv_boost(cond_info, particle_kinematics).reshape((-1, 4))
 
         #######################
-        ##  Train discriminator
+        #  Train discriminator
         #######################
         if optimizer_idx == 0:
             ## with real batch
@@ -182,7 +181,7 @@ class CondEventGANModule(LightningModule):
             return {"loss": loss_disc}
 
         #######################
-        ## Train generator ####
+        # Train generator ####
         #######################
         if optimizer_idx == 1:
             score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
@@ -196,19 +195,19 @@ class CondEventGANModule(LightningModule):
 
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
-        pass    
-        
-    def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:    
+        pass
+
+    def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
         """Common steps for valiation and testing"""
-        
+
         num_particles = batch.num_nodes
         num_evts = batch.num_graphs
         cond_info = batch.cond_info
         x_momenta = batch.x
         out_info = batch.out_info.reshape((-1, 4))
         device = x_momenta.device
-        
-        ## generate events from the Generator
+
+        # generate events from the Generator
         noise = self.generate_noise(num_particles).to(device)
         particle_kinematics = self(noise, cond_info)
         x_generated = inv_boost(cond_info, particle_kinematics).reshape((-1, 4))
@@ -247,21 +246,21 @@ class CondEventGANModule(LightningModule):
         perf = self.step(batch, batch_idx)
         wd_distance = perf['wd']
         avg_nll = perf['nll']
-        
-        ## update and log metrics
+
+        # update and log metrics
         self.val_wd(wd_distance)
         self.val_nll(avg_nll)
-        
+
         self.val_min_avg_wd(wd_distance)
         self.val_min_avg_nll(avg_nll)
         self.log("val/wd", wd_distance, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
-        
+
         self.log("val/min_avg_wd", self.val_min_avg_wd.compute(), prog_bar=True)
         self.log("val/min_avg_nll", self.val_min_avg_nll.compute(), prog_bar=True)
-        
+
         if avg_nll <= self.val_min_avg_nll.compute() or \
-            wd_distance <= self.val_min_avg_wd.compute():
+           wd_distance <= self.val_min_avg_wd.compute():
             outname = f"val-{self.current_epoch}-{batch_idx}"
             predictions = perf['preds']
             truths = perf['truths']
@@ -270,24 +269,24 @@ class CondEventGANModule(LightningModule):
             self.compare(predictions, truths, out_predictions, out_truths, batch.cond_info.cpu().detach().numpy(), outname)
         
         return perf, batch_idx
-        
+
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
         perf = self.step(batch, batch_idx)
         wd_distance = perf['wd']
         avg_nll = perf['nll']
-        
-        ## update and log metrics
+
+        # update and log metrics
         self.test_wd(wd_distance)
         self.test_nll(avg_nll)
         self.test_wd_best(wd_distance)
         self.test_nll_best(avg_nll)
-        
+
         self.log("test/wd", wd_distance, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test/wd_best", self.test_wd_best.compute(), prog_bar=True)
         self.log("test/nll_best", self.test_nll_best.compute(), prog_bar=True)
-        ## comparison
+        # comparison
         if avg_nll <= self.test_nll_best.compute() or \
             wd_distance <= self.test_wd_best.compute():
                 outname = f"test-{self.current_epoch}-{batch_idx}"
