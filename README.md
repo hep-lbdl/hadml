@@ -19,9 +19,8 @@ conda activate herwig
 # for example, for cuda 11.7
 
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
-conda install pyg -c pyg
 
-## And install pyG
+## and install pyG
 conda install pyg -c pyg
 
 # install requirements

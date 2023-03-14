@@ -25,7 +25,7 @@ tags: ["herwig", "allhadrons"]
 seed: 12345
 
 trainer:
-  max_epochs: 20
+  max_epochs: 1
   val_check_interval: 50
 
 callbacks:
