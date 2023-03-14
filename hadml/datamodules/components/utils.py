@@ -102,6 +102,16 @@ def boost(a_row: np.ndarray):
     return list(itertools.chain(*[x.tolist() for x in results]))
 
 
+def inv_boost(a_row: np.ndarray):
+    """boost all particles to the rest frame of the first particle in the list"""
+
+    assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
+    _, inv_boost_fn = create_boost_fn(a_row[:4])
+    n_particles = len(a_row) // 4
+    results = [inv_boost_fn(a_row[4*x: 4*(x+1)]) for x in range(n_particles)]
+    return list(itertools.chain(*[x.tolist() for x in results]))
+
+
 # <TODO> Use different scaler methods
 class InputScaler:
     def __init__(self, feature_range=(-0.99999, 0.99999)):

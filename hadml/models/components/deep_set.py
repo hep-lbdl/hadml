@@ -39,10 +39,6 @@ class ClusterInEventModule(nn.Module):
         ## https://pytorch-geometric.readthedocs.io/en/2.0.3/notes/introduction.html#mini-batches
         
         encoded = self.encoder(x)
-        ## now summed_info: [num_evts, decoder_dims[0]]
-        # summed_info = scatter_mean(encoded, batch, dim=0)
-
-            
         return self.decoder(encoded)
         
         

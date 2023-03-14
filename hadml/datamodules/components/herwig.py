@@ -3,6 +3,7 @@ import os
 import pickle
 from typing import Any, Dict, Optional, Tuple
 import glob
+import math
 
 import numpy as np
 import pandas as pd
@@ -373,7 +374,6 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
 class HerwigEventDataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, raw_file_list=None):
         
-        # self.raw_file_list = raw_file_list
         self.raw_file_list = []
         for pattern in raw_file_list:
             self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
@@ -456,15 +456,24 @@ class HerwigEventDataset(InMemoryDataset):
             theta = np.arctan(pT/pz)
             return phi, theta
 
-        out_4vec = new_inputs[:, -4:]
-        _,px,py,pz = [out_4vec[:, idx] for idx in range(4)]
-        pT = np.sqrt(px**2 + py**2)
-        phi = np.arctan(px/py)
-        theta = np.arctan(pT/pz)
         phi, theta = get_angles(new_inputs[:, -4:])
+        theta = theta + math.pi * (theta<0)
             
         out_truth = np.stack([phi, theta], axis=1)
         cond_info = cluster
+        out_info = np.concatenate([h1, h2], axis=1)
+
+        out_truth_max = np.array([math.pi/2, math.pi])
+        out_truth_min = np.array([-math.pi/2, 0])
+        out_truth = (out_truth - out_truth_min)/(out_truth_max - out_truth_min)*2 - 1
+
+        cond_info_max = np.array([50., 50., 50., 50])
+        cond_info_min = np.array([0., -50., -50., -50])
+        cond_info = (cond_info - cond_info_min)/(cond_info_max - cond_info_min)*2 - 1
+
+        out_info_max = np.array([40., 30., 30., 30, 40., 30., 30., 30])
+        out_info_min = np.array([0., -30., -30., -30., 0., -30., -30., -30.])
+        out_info = (out_info - out_info_min)/(out_info_max - out_info_min)*2 - 1
         
         ## convert particle IDs to indices
         ## then these indices can be embedded in N dim. space
@@ -473,6 +482,7 @@ class HerwigEventDataset(InMemoryDataset):
 
         data = Data(
             x=torch.from_numpy(out_truth).float(),
+            out_info=torch.from_numpy(out_info).float(),
             edge_index=None,
             cond_info=torch.from_numpy(cond_info).float(),
             ptypes=torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1)).long(),

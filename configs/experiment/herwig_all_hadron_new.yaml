@@ -4,12 +4,12 @@
 # conda-start torch
 
 # to execute this experiment run:
-# python hadml/train.py experiment=herwig_all_hadron
+# python hadml/train.py experiment=herwig_all_hadron_new
 ## to add a logger
-# python hadml/train.py experiment=herwig_all_hadron logger=wandb
+# python hadml/train.py experiment=herwig_all_hadron_new logger=wandb
 
 ## with training techniques
-# python hadml/train.py experiment=herwig_all_hadron logger=wandb +trainer.gradient_clip_val=0.5
+# python hadml/train.py experiment=herwig_all_hadron_new logger=wandb +trainer.gradient_clip_val=0.5
 
 defaults:
   - override /datamodule: herwig.yaml

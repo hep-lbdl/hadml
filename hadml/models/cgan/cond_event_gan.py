@@ -7,6 +7,7 @@ from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 
 from hadml.metrics.media_logger import log_images
+from hadml.models.components.utils import inv_boost
     
 class CondEventGANModule(LightningModule):
     """Event GAN module to generate events.
@@ -143,27 +144,33 @@ class CondEventGANModule(LightningModule):
         num_particles = batch.num_nodes
         cond_info = batch.cond_info
         x_momenta = batch.x
+        out_info = batch.out_info
+        event_label = torch.cat((batch.batch.reshape(-1, 1), batch.batch.reshape(-1, 1)), dim=1).reshape(-1)
         
         device = x_momenta.device
         noise = self.generate_noise(num_particles).to(device)
 
         ## generate fake batch
         particle_kinematics = self(noise, cond_info)
-        x_generated = particle_kinematics if cond_info is None \
-            else torch.cat([cond_info, particle_kinematics], dim=1)
+
+        # x_generated = particle_kinematics if cond_info is None \
+        #     else torch.cat([cond_info, particle_kinematics], dim=1)
+        x_generated = inv_boost(cond_info, particle_kinematics).reshape((-1, 4))
 
         #######################
         ##  Train discriminator
         #######################
         if optimizer_idx == 0:
             ## with real batch
-            x_truth = x_momenta if cond_info is None else torch.cat([cond_info, x_momenta], dim=1)
-            score_truth = self.discriminator(x_truth, batch.batch).squeeze(-1)
+            # x_truth = x_momenta if cond_info is None else torch.cat([cond_info, x_momenta], dim=1)
+            x_truth = out_info.reshape((-1, 4))
+            # score_truth = self.discriminator(x_truth, batch.batch).squeeze(-1)
+            score_truth = self.discriminator(x_truth, event_label).squeeze(-1)
             label = torch.full((len(score_truth),), real_label, dtype=torch.float).to(device)
             loss_real = self.criterion(score_truth, label)
 
             ## with fake batch            
-            score_fakes = self.discriminator(x_generated.detach(), batch.batch).squeeze(-1)
+            score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
             fake_labels = torch.full((len(score_fakes),), fake_label, dtype=torch.float).to(device)
             loss_fake = self.criterion(score_fakes, fake_labels)
             
@@ -178,8 +185,7 @@ class CondEventGANModule(LightningModule):
         ## Train generator ####
         #######################
         if optimizer_idx == 1:
-            score_fakes = self.discriminator(x_generated, batch.batch).squeeze(-1)
-        
+            score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
             label = torch.full((len(score_fakes),), real_label, dtype=torch.float).to(device)
             loss_gen = self.criterion(score_fakes, label)
             
@@ -199,33 +205,37 @@ class CondEventGANModule(LightningModule):
         num_evts = batch.num_graphs
         cond_info = batch.cond_info
         x_momenta = batch.x
+        out_info = batch.out_info.reshape((-1, 4))
         device = x_momenta.device
         
         ## generate events from the Generator
         noise = self.generate_noise(num_particles).to(device)
         particle_kinematics = self(noise, cond_info)
+        x_generated = inv_boost(cond_info, particle_kinematics).reshape((-1, 4))
         
         ## compute the WD for the particle kinmatics
         predictions = particle_kinematics.cpu().detach().numpy()
         truths = x_momenta.cpu().detach().numpy()
+        out_predictions = x_generated.cpu().detach().numpy()
+        out_truths = out_info.cpu().detach().numpy()
 
         distances = [
-            stats.wasserstein_distance(predictions[:, idx], truths[:, idx]) \
-                for idx in range(self.hparams.num_particle_kinematics)
+            stats.wasserstein_distance(out_predictions[:, idx], out_truths[:, idx]) \
+                for idx in range(4)
         ]
         wd_distance = sum(distances)/len(distances)
         
-        return {"wd": wd_distance, "nll": 0., "preds": predictions, "truths": truths}
+        return {"wd": wd_distance, "nll": 0., "preds": predictions, "truths": truths, "out_preds": out_predictions, "out_truths": out_truths}
     
 
-    def compare(self, predictions, truths, outname) -> None:
+    def compare(self, predictions, truths, out_predictions, out_truths, cond_info, outname) -> None:
         """Compare the generated events with the real ones
         Parameters:
             perf: dictionary from the step function
         """
         if self.comparison_fn is not None:
             ## compare the generated events with the real ones
-            images = self.comparison_fn(predictions, truths, outname)
+            images = self.comparison_fn(predictions, truths, out_predictions, out_truths, cond_info, outname)
             if self.logger and self.logger.experiment is not None:
                 log_images(self.logger, "Event GAN",
                            images=list(images.values()), 
@@ -255,7 +265,9 @@ class CondEventGANModule(LightningModule):
             outname = f"val-{self.current_epoch}-{batch_idx}"
             predictions = perf['preds']
             truths = perf['truths']
-            self.compare(predictions, truths, outname)
+            out_predictions = perf['out_preds']
+            out_truths = perf['out_truths']
+            self.compare(predictions, truths, out_predictions, out_truths, batch.cond_info.cpu().detach().numpy(), outname)
         
         return perf, batch_idx
         
@@ -281,6 +293,8 @@ class CondEventGANModule(LightningModule):
                 outname = f"test-{self.current_epoch}-{batch_idx}"
                 predictions = perf['preds']
                 truths = perf['truths']
-                self.compare(predictions, truths, outname)
+                out_predictions = perf['out_preds']
+                out_truths = perf['out_truths']
+                self.compare(predictions, truths, out_predictions, out_truths, batch.cond_info.cpu().detach().numpy(), outname)
 
         return perf, batch_idx

@@ -46,17 +46,23 @@ datamodule:
   pin_memory: True
   train_val_test_split: [26000, 10000, 10000]
 
+  # batch_size: 500
+  # num_workers: 8
+  # pin_memory: True
+  # train_val_test_split: [45000, 500, 500]
+
 
 # ## override /model:
 model:
-  noise_dim: 128
+  noise_dim: 10
   generator:
-    hidden_dims: [256, 256, 256]
+    hidden_dims: [256, 256]
 #     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
 #     hidden_dims: [256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
 
   discriminator:
-    _target_: hadml.models.components.deep_set.ClusterInEventModule
+    _target_: hadml.models.components.deep_set.DeepSetModule
+    # _target_: hadml.models.components.deep_set.ClusterInEventModule
 #     encoder_dims: [128, 128, 128, 128, 128, 128, 128, 128]
 #     decoder_dims: [128, 128, 128, 128, 256, 256, 256, 256]
 #     word_embedding_dim: 16
