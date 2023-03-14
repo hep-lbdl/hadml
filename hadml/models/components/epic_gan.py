@@ -6,14 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils.weight_norm as weight_norm
 
-######################################
-# PERMUTATION EQUIVARIANT LAYER  ###
-######################################
-
-
-# equivariant layer with global concat & residual connections inside this module  & weight_norm
-# ordered: first update global, then local
 class EPiC_layer(nn.Module):
+    """Permutation equivariant layer.
+
+    Equivariant layer with global concat & residual connections inside this module  & weight_norm
+    ordered: first update global, then local.
+    """
     def __init__(self, local_in_dim, hid_dim, latent_dim):
         super(EPiC_layer, self).__init__()
         self.fc_global1 = weight_norm(nn.Linear(int(2 * hid_dim) + latent_dim, hid_dim))
@@ -38,15 +36,13 @@ class EPiC_layer(nn.Module):
 
         return x_global, x_local
 
-######################################
-#       GENERATOR                ###
-######################################
 
-
-# Decoder / Generator for mutliple particles with Variable Number of Equivariant Layers (with global concat)
-# added same global and local usage in EPiC layer
-# order: global first, then local
 class EPiC_generator(nn.Module):
+    """
+    Decoder / Generator for mutliple particles with Variable Number of Equivariant Layers (with global concat)
+    added same global and local usage in EPiC layer
+    order: global first, then local
+    """
     def __init__(
             self, latent: int,
             latent_local: int,
@@ -105,18 +101,11 @@ class EPiC_generator(nn.Module):
             return out     # [batch, points, feats]
 
 
-
-
-
-
-######################################
-#       DISCRIMINATOR            ###
-######################################
-
-
-# Discriminator: Deep Sets like 3 + 3 layer with residual connections
-# & weight_norm   & mix(mean/sum/max) pooling  & NO multipl. cond.
 class EPiC_discriminator(nn.Module):
+    """
+    Discriminator: Deep Sets like 3 + 3 layer with residual connections
+    & weight_norm   & mix(mean/sum/max) pooling  & NO multipl. cond.
+    """
     def __init__(self, hid_d, feats, equiv_layers, latent):
         super().__init__()
         self.equiv_layers = equiv_layers

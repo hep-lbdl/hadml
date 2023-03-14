@@ -8,8 +8,7 @@ from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
 
 from hadml.metrics.media_logger import log_images
-from hadml.utils.utils import get_wasserstein_grad_penalty
-
+from hadml.utils.utils import get_wasserstein_grad_penalty, conditional_cat
 
 
 class CondParticleGANModule(LightningModule):
@@ -91,7 +90,7 @@ class CondParticleGANModule(LightningModule):
     def forward(
         self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_fake = noise if cond_info is None else torch.concat([cond_info, noise], dim=1)
+        x_fake = conditional_cat(cond_info, noise, dim=1)
         return (
             self._call_mlp_particle_generator(x_fake)
             if self.use_particle_mlp
@@ -199,9 +198,6 @@ class CondParticleGANModule(LightningModule):
         return loss_disc
 
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
-        real_label = 1
-        fake_label = 0
-
         cond_info, x_momenta, x_type_indices = batch
         x_type_data = x_type_indices
         if self.embedding_module is not None:
@@ -210,9 +206,20 @@ class CondParticleGANModule(LightningModule):
         num_evts = x_momenta.shape[0]
         device = x_momenta.device
 
+        particle_type_data, x_generated = self._prepare_fake_batch(cond_info, num_evts, device)
+
+        if optimizer_idx == 0:
+            return self._discriminator_step(cond_info, particle_type_data, x_generated, x_momenta, x_type_data)
+
+        if optimizer_idx == 1:
+            return self._generator_step(particle_type_data, x_generated)
+
+    def _prepare_fake_batch(self,
+                            cond_info: Optional[torch.Tensor],
+                            num_evts: int,
+                            device: torch.device) -> (torch.Tensor, torch.Tensor):
         noise = self.generate_noise(num_evts).to(device)
 
-        # generate fake batch
         particle_kinematics, particle_types = self(noise, cond_info)
         if self.embedding_module is None:
             particle_type_data = torch.argmax(particle_types, dim=1)
@@ -221,54 +228,48 @@ class CondParticleGANModule(LightningModule):
             particle_type_data = F.gumbel_softmax(particle_types, 0.1)
             particle_type_data = particle_type_data.reshape(particle_kinematics.shape[0], -1)
 
-        x_generated = particle_kinematics if cond_info is None \
-            else torch.cat([cond_info, particle_kinematics], dim=1)
+        x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
+        return particle_type_data, x_generated
 
-        #######################
-        #  Train discriminator
-        #######################
-        if optimizer_idx == 0:
-            # with real batch
-            x_truth = (
-                x_momenta
-                if cond_info is None
-                else torch.cat([cond_info, x_momenta], dim=1)
+    def _generator_step(self,
+                        particle_type_data: torch.Tensor,
+                        x_generated: torch.Tensor):
+        score_fakes = self.discriminator(x_generated, particle_type_data).squeeze(-1)
+        loss_gen = self._generator_loss(score_fakes)
+
+        # update and log metrics
+        self.train_loss_gen(loss_gen)
+        self.log("lossG", loss_gen, prog_bar=True)
+        return {"loss": loss_gen}
+
+    def _discriminator_step(self,
+                            cond_info: Optional[torch.Tensor],
+                            particle_type_data: torch.Tensor,
+                            x_generated: torch.Tensor,
+                            x_momenta: torch.Tensor,
+                            x_type_data: torch.Tensor):
+        # with real batch
+        x_truth = conditional_cat(cond_info, x_momenta, dim=1)
+
+        score_truth = self.discriminator(x_truth, x_type_data).squeeze(-1)
+        # with fake batch
+        score_fakes = self.discriminator(x_generated.detach(), particle_type_data.detach()).squeeze(-1)
+        loss_disc = self._discriminator_loss(score_truth, score_fakes)
+        wasserstein_grad_penalty = 0
+        if self.wasserstein_reg > 0:
+            wasserstein_grad_penalty = get_wasserstein_grad_penalty(
+                self.discriminator,
+                [x_truth, x_type_data],
+                [x_generated.detach(), particle_type_data.detach()],
+            ) * self.wasserstein_reg
+        # update and log metrics
+        self.train_loss_disc(loss_disc)
+        self.log("lossD", loss_disc, prog_bar=True)
+        if self.wasserstein_reg > 0:
+            self.log(
+                "wasserstein_grad_penalty", wasserstein_grad_penalty, prog_bar=True
             )
-            score_truth = self.discriminator(x_truth, x_type_data).squeeze(-1)
-
-            # with fake batch
-            score_fakes = self.discriminator(x_generated.detach(), particle_type_data.detach()).squeeze(-1)
-
-            loss_disc = self._discriminator_loss(score_truth, score_fakes)
-
-            wasserstein_grad_penalty = 0
-            if self.wasserstein_reg > 0:
-                wasserstein_grad_penalty = get_wasserstein_grad_penalty(
-                    self.discriminator,
-                    [x_truth, x_type_data],
-                    [x_generated.detach(), particle_type_data.detach()],
-                ) * self.wasserstein_reg
-
-            # update and log metrics
-            self.train_loss_disc(loss_disc)
-            self.log("lossD", loss_disc, prog_bar=True)
-            if self.wasserstein_reg > 0:
-                self.log(
-                    "wasserstein_grad_penalty", wasserstein_grad_penalty, prog_bar=True
-                )
-            return {"loss": loss_disc + wasserstein_grad_penalty}
-
-        #######################
-        # Train generator ####
-        #######################
-        if optimizer_idx == 1:
-            score_fakes = self.discriminator(x_generated, particle_type_data).squeeze(-1)
-            loss_gen = self._generator_loss(score_fakes)
-
-            # update and log metrics
-            self.train_loss_gen(loss_gen)
-            self.log("lossG", loss_gen, prog_bar=True)
-            return {"loss": loss_gen}
+        return {"loss": loss_disc + wasserstein_grad_penalty}
 
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`

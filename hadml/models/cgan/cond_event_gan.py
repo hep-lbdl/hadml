@@ -6,6 +6,8 @@ from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 
 from hadml.metrics.media_logger import log_images
+from hadml.utils.utils import conditional_cat
+
 
 class CondEventGANModule(LightningModule):
     """Event GAN module to generate events.
@@ -73,7 +75,7 @@ class CondEventGANModule(LightningModule):
         self.test_nll_best = MinMetric()
 
     def forward(self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_fake = noise if cond_info is None else torch.concat([cond_info, noise], dim=1)
+        x_fake = conditional_cat(cond_info, noise, dim=1)
         fakes = self.generator(x_fake)
         return fakes
 
@@ -98,23 +100,49 @@ class CondEventGANModule(LightningModule):
         real_label = 1
         fake_label = 0
 
-        opt_disc, opt_gen = self.optimizers()
+        x_generated = self._discriminator_step(batch,
+                                               fake_label,
+                                               real_label)
 
+        self._generator_step(batch, x_generated, real_label)
+
+    def _generator_step(self,
+                        batch: Any,
+                        x_generated: torch.Tensor,
+                        real_label: int):
+        _, opt_gen = self.optimizers()
+        num_evts = batch.num_graphs
+        device = batch.x.device
+
+        opt_gen.zero_grad()
+
+        score_fakes = self.discriminator(x_generated, batch.batch).squeeze(-1)
+        label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
+        loss_gen = self.criterion(score_fakes, label)
+
+        self.manual_backward(loss_gen)
+        opt_gen.step()
+
+        # update and log metrics
+        self.train_loss_gen(loss_gen)
+        self.log("lossG", loss_gen, prog_bar=True)
+
+    def _discriminator_step(self,
+                            batch: Any,
+                            fake_label: int,
+                            real_label: int) -> torch.Tensor:
+        opt_disc, _ = self.optimizers()
         num_evts = batch.num_graphs
         num_particles = batch.num_nodes
         cond_info = batch.cond_info
         x_momenta = batch.x
-
-        device = x_momenta.device
+        device = batch.x.device
         noise = self.generate_noise(num_particles).to(device)
 
-        #######################
-        #  Train discriminator
-        #######################
-        # with real events
         opt_disc.zero_grad()
 
-        x_truth = x_momenta if cond_info is None else torch.cat([cond_info, x_momenta], dim=1)
+        # with real events
+        x_truth = conditional_cat(cond_info, x_momenta, dim=1)
         score_truth = self.discriminator(x_truth, batch.batch).squeeze(-1)
 
         label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
@@ -122,13 +150,14 @@ class CondEventGANModule(LightningModule):
 
         # with fake batch
         particle_kinematics = self(noise, cond_info)
-        x_generated = particle_kinematics if cond_info is None else torch.cat([cond_info, particle_kinematics], dim=1)
+        x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
 
         score_fakes = self.discriminator(x_generated.detach(), batch.batch).squeeze(-1)
         fake_labels = torch.full((num_evts,), fake_label, dtype=torch.float).to(device)
         loss_fake = self.criterion(score_fakes, fake_labels)
 
         loss_disc = (loss_real + loss_fake) / 2
+
         self.manual_backward(loss_disc)
         opt_disc.step()
 
@@ -136,21 +165,7 @@ class CondEventGANModule(LightningModule):
         self.train_loss_disc(loss_disc)
         self.log("lossD", loss_disc, prog_bar=True)
 
-
-        #######################
-        # Train generator ####
-        #######################
-        opt_gen.zero_grad()
-        score_fakes = self.discriminator(x_generated, batch.batch).squeeze(-1)
-
-        label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
-        loss_gen = self.criterion(score_fakes, label)
-        self.manual_backward(loss_gen)
-        opt_gen.step()
-
-        # update and log metrics
-        self.train_loss_gen(loss_gen)
-        self.log("lossG", loss_gen, prog_bar=True)
+        return x_generated
 
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
