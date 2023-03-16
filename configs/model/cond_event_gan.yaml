@@ -1,9 +1,6 @@
 _target_: hadml.models.cgan.cond_event_gan.CondEventGANModule
 noise_dim: 10
 cond_info_dim: 4
-num_particle_ids: 322
-num_output_particles: 2
-num_particle_kinematics: 2
 
 ## how often the optimizers will be used.
 num_critics: 1
@@ -24,7 +21,7 @@ generator:
   # _target_: hadml.models.components.mlp_res.ResMLPModule
   input_dim: ${eval:${model.noise_dim}+${model.cond_info_dim}} 
   hidden_dims: ${gen_list:256,2}
-  output_dim: ${model.num_particle_kinematics}
+  output_dim: 2
   layer_norm: true
   dropout: 0.0
   last_activation:
@@ -39,13 +36,26 @@ discriminator:
   last_activation:
     _target_: torch.nn.Sigmoid
 
+generator_prescale:
+  _target_: hadml.models.components.transform.NormModule
+  val_max: [50., 50., 50., 50]
+  val_min: [0., -50., -50., -50]
+
+generator_postscale:
+  _target_: hadml.models.components.transform.InvsNormModule
+  val_max: [1.570796326794897 , 3.141592653589793]
+  val_min: [-1.570796326794897, 0]
+
+discriminator_prescale:
+  _target_: hadml.models.components.transform.NormModule
+  val_max: [40., 30., 30., 30]
+  val_min: [0., -30., -30., -30.]
+
 criterion:
   _target_: torch.nn.BCELoss
 
 comparison_fn:
-  _target_: hadml.metrics.compare_fn.CompareParticlesLabFrame
+  _target_: hadml.metrics.compare_fn.CompareParticlesEventGan
   xlabels: [$\phi$, $\theta$, $E$, $p_x$, $p_y$, $p_z$]
-  num_kinematics: ${model.num_particle_kinematics}
-  num_particles: 0
-  num_particle_ids: ${model.num_particle_ids}
+  xranges: [[-1.6, 1.6], [-0.1, 3.2], [0, 10], [-10, 10], [-10, 10], [-10, 10]]
   outdir: ${paths.output_dir}/images

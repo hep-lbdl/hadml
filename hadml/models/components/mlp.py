@@ -60,7 +60,6 @@ class MLPModule(nn.Module):
     def forward(self, x) -> torch.Tensor:
         return self.model(x)
 
-
 class MLPParticleModule(nn.Module):
     def __init__(
         self,

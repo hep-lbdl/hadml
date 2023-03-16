@@ -90,6 +90,3 @@ model:
 
 #   # optimizer_discriminator:
 #   #   lr: 0.000005
-
-  comparison_fn:
-    xranges: [[-1.57, 1.57], [-1.57, 1.57]]

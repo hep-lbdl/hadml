@@ -459,32 +459,19 @@ class HerwigEventDataset(InMemoryDataset):
         phi, theta = get_angles(new_inputs[:, -4:])
         theta = theta + math.pi * (theta<0)
             
-        out_truth = np.stack([phi, theta], axis=1)
-        cond_info = cluster
-        out_info = np.concatenate([h1, h2], axis=1)
+        angles = np.stack([phi, theta], axis=1)
+        hadrons = np.concatenate([h1, h2], axis=1)
 
-        out_truth_max = np.array([math.pi/2, math.pi])
-        out_truth_min = np.array([-math.pi/2, 0])
-        out_truth = (out_truth - out_truth_min)/(out_truth_max - out_truth_min)*2 - 1
-
-        cond_info_max = np.array([50., 50., 50., 50])
-        cond_info_min = np.array([0., -50., -50., -50])
-        cond_info = (cond_info - cond_info_min)/(cond_info_max - cond_info_min)*2 - 1
-
-        out_info_max = np.array([40., 30., 30., 30, 40., 30., 30., 30])
-        out_info_min = np.array([0., -30., -30., -30., 0., -30., -30., -30.])
-        out_info = (out_info - out_info_min)/(out_info_max - out_info_min)*2 - 1
-        
         ## convert particle IDs to indices
         ## then these indices can be embedded in N dim. space
         h1_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h1_types))
         h2_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h2_types))
 
         data = Data(
-            x=torch.from_numpy(out_truth).float(),
-            out_info=torch.from_numpy(out_info).float(),
+            x=torch.from_numpy(angles).float(),
+            hadrons=torch.from_numpy(hadrons).float(),
             edge_index=None,
-            cond_info=torch.from_numpy(cond_info).float(),
+            cluster=torch.from_numpy(cluster).float(),
             ptypes=torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1)).long(),
         )
         return data
