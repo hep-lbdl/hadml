@@ -3,7 +3,6 @@ from typing import List
 import torch
 import torch.nn as nn
 from torch import Tensor
-import math
 
 def InvsBoost(cluster: Tensor, angles: Tensor, mass_1: float = 0.0013957, mass_2: float = 0.0013957) -> Tensor:
     """ Boost the kinematics back to the lab frame

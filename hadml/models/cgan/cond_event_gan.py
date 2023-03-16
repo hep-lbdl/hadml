@@ -8,8 +8,6 @@ from torchmetrics import MinMetric, MeanMetric
 from hadml.metrics.media_logger import log_images
 from hadml.models.components.transform import InvsBoost
 
-import math
-    
 class CondEventGANModule(LightningModule):
     """Event GAN module to generate events.
     The conditional inputs feeding to the gnerator are cluster's 4 vector.
