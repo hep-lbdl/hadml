@@ -2,7 +2,7 @@ import time
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Callable, List, Iterable, Tuple
+from typing import Callable, List, Iterable, Tuple, Optional, Union
 
 import hydra
 import numpy as np
@@ -11,7 +11,7 @@ from omegaconf import DictConfig
 from pytorch_lightning import Callback
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.utilities import rank_zero_only
-from torch import nn
+from torch import nn, Tensor
 
 from hadml.utils import pylogger, rich_utils
 
@@ -209,8 +209,8 @@ def close_loggers() -> None:
 
 
 def get_wasserstein_grad_penalty(D: nn.Module,
-                                 real_inputs: Tuple[Iterable[torch.Tensor], torch.Tensor],
-                                 fake_inputs: Tuple[Iterable[torch.Tensor], torch.Tensor]):
+                                 real_inputs: Union[Iterable[torch.Tensor], torch.Tensor],
+                                 fake_inputs: Union[Iterable[torch.Tensor], torch.Tensor]):
     """Gradient penalty from https://arxiv.org/abs/1704.00028"""
     if isinstance(real_inputs, torch.Tensor):
         real_inputs = [real_inputs]
@@ -234,3 +234,9 @@ def get_wasserstein_grad_penalty(D: nn.Module,
 
     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
     return gradient_penalty
+
+
+def conditional_cat(optional: Optional[Tensor], x: Tensor, dim=1):
+    if optional is None:
+        return x
+    return torch.cat([optional, x], dim=dim)
