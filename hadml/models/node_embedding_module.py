@@ -1,9 +1,7 @@
-from typing import Any, List, Optional, Dict, Callable, Tuple
+from typing import Optional, Callable, Tuple
 
 import torch
-import torch.nn.functional as F
 from pytorch_lightning import LightningModule
-from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 
 class ParticleEmbeddingModule(LightningModule):
@@ -19,7 +17,7 @@ class ParticleEmbeddingModule(LightningModule):
         super().__init__()
         self.save_hyperparameters(logger=False, ignore=["net"])
         self.net = net
-        
+
         # for averaging loss across batches
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
@@ -27,7 +25,7 @@ class ParticleEmbeddingModule(LightningModule):
 
         self.val_min_loss = MinMetric()
         self.test_min_loss = MinMetric()
-        
+
     def forward(self, x: torch.Tensor):
         return self.net(x)
 
@@ -41,6 +39,4 @@ class ParticleEmbeddingModule(LightningModule):
         num_particles = x_type_indices.shape[1]
         type_encoding = [self.net(x_type_indices[:, idx]) for idx in range(num_particles)]
 
-        ## true cases
-        
-
+        # true cases

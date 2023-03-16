@@ -17,11 +17,11 @@ class ResidualBlock(nn.Module):
             nn.Linear(input_dim, input_dim),
             nn.BatchNorm1d(input_dim),
             nn.ReLU()
-            )
+        )
 
     def forward(self, x) -> torch.Tensor:
         return self.model(x) + x
-    
+
 
 def build_layers(input_dim, hidden_dims, output_dim):
     layers = [nn.Linear(input_dim, hidden_dims[0]), nn.ReLU()]
@@ -32,20 +32,20 @@ def build_layers(input_dim, hidden_dims, output_dim):
     layers.append(nn.Linear(hidden_dims[-1], output_dim))
     return layers
 
-  
+
 class ResMLPModule(nn.Module):
     def __init__(self, input_dim, hidden_dims, output_dim,
-                 dropout = 0.0,         # not used.
-                 layer_norm = True,    # not used.
-                 last_activation = None):
+                 dropout=0.0,         # not used.
+                 layer_norm=True,    # not used.
+                 last_activation=None):
         super().__init__()
-        
+
         layers = build_layers(input_dim, hidden_dims, output_dim)
         if last_activation is not None:
             layers.append(last_activation)
 
         self.model = nn.Sequential(*layers)
-        
-        
+
+
     def forward(self, x) -> torch.Tensor:
         return self.model(x)

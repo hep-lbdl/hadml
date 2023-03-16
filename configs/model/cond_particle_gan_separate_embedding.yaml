@@ -1,0 +1,50 @@
+_target_: hadml.models.cgan.cond_particle_gan.CondParticleGANModule
+noise_dim: 128
+cond_info_dim: 8
+num_particle_ids: 322
+num_output_particles: 2
+num_particle_kinematics: 2
+
+## how often the optimizers will be used.
+num_critics: 1
+num_gen: 5
+
+optimizer_generator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.00005
+
+optimizer_discriminator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+
+generator:
+  _target_: hadml.models.components.mlp.MLPModule
+  input_dim: ${eval:${model.noise_dim}+${model.cond_info_dim}}
+  hidden_dims: [256, 256]
+  output_dim: ${eval:${model.num_particle_ids}*${model.num_output_particles}+${model.num_particle_kinematics}}
+  layer_norm: true
+  dropout: 0.0
+  last_activation:
+    _target_: torch.nn.Tanh
+
+embedding_module:
+  _target_: hadml.models.components.mlp.OneHotEmbeddingModule
+  vocab_size: ${model.num_particle_ids}
+
+discriminator:
+  _target_: hadml.models.components.mlp.MLPModule
+  input_dim: ${eval:${model.cond_info_dim}+${model.num_particle_kinematics}+2*${model.num_particle_ids}}
+  hidden_dims: [128, 128]
+  output_dim: 1
+
+comparison_fn:
+  _target_: hadml.metrics.compare_fn.CompareParticles
+  xlabels: ["phi", "eta"]
+  num_kinematics: ${model.num_particle_kinematics}
+  num_particles: ${model.num_output_particles}
+  num_particle_ids: ${model.num_particle_ids}
+  outdir: ${paths.output_dir}/images
+
+
