@@ -80,8 +80,9 @@ class CondEventGANModule(LightningModule):
         self.test_nll_best = MinMetric()
 
     def forward(
-        self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
+        self, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        noise = torch.randn(len(cond_info), self.hparams.noise_dim, device=cond_info.device)
         cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         fakes = self.generator(x_fake)
@@ -133,9 +134,7 @@ class CondEventGANModule(LightningModule):
                 "frequency": self.hparams.num_gen
             })
 
-    def generate_noise(self, num_evts: int):
-        return torch.randn(num_evts, self.hparams.noise_dim)  # type: ignore
-
+   
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
         # so we need to make sure val_acc_best doesn't store accuracy from these checks
@@ -145,56 +144,52 @@ class CondEventGANModule(LightningModule):
         self.test_nll_best.reset()
 
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
-        real_label = 1
-        fake_label = 0
-
         num_evts = batch.num_graphs
         num_particles = batch.num_nodes
         cluster = batch.cluster
         x_truth = batch.hadrons.reshape((-1, 4))
         event_label = torch.cat((batch.batch.reshape(-1, 1), batch.batch.reshape(-1, 1)), dim=1).reshape(-1)
-
-        device = cluster.device
-        noise = self.generate_noise(num_particles).to(device)
-
+        
         ## generate fake batch
-        angles_generated = self(noise, cluster)
+        angles_generated = self(cluster)
         x_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
+
+        if optimizer_idx == 0:
+            return self._discriminator_step(x_truth, x_generated, event_label)
+
+        if optimizer_idx == 1:
+            return self._generator_step(x_generated, event_label)
+
+    def _generator_step(self, x_generated, event_label):
         x_generated = self.discriminator_prescale(x_generated)
         score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
+        label = torch.ones_like(score_fakes)
+        loss_gen = self.criterion(score_fakes, label)
 
-        #######################
-        #  Train discriminator
-        #######################
-        if optimizer_idx == 0:
-            ## with real batch
-            x_truth = self.discriminator_prescale(x_truth)
-            score_truth = self.discriminator(x_truth, event_label).squeeze(-1)
-            label = torch.full((len(score_truth),), real_label, dtype=torch.float).to(device)
-            loss_real = self.criterion(score_truth, label)
+        ## update and log metrics
+        self.train_loss_gen(loss_gen)
+        self.log("lossG", loss_gen, prog_bar=True)
+        return {"loss": loss_gen}
 
-            ## with fake batch
-            fake_labels = torch.full((len(score_fakes),), fake_label, dtype=torch.float).to(device)
-            loss_fake = self.criterion(score_fakes, fake_labels)
+    def _discriminator_step(self, x_truth, x_generated, event_label):
+        ## with real batch
+        x_truth = self.discriminator_prescale(x_truth)
+        score_truth = self.discriminator(x_truth, event_label).squeeze(-1)
+        label = torch.ones_like(score_truth)
+        loss_real = self.criterion(score_truth, label)
 
-            loss_disc = (loss_real + loss_fake) / 2
+        ## with fake batch
+        x_generated = self.discriminator_prescale(x_generated)
+        score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
+        fake_labels = torch.zeros_like(score_fakes)
+        loss_fake = self.criterion(score_fakes, fake_labels)
 
-            ## update and log metrics
-            self.train_loss_disc(loss_disc)
-            self.log("lossD", loss_disc, prog_bar=True)
-            return {"loss": loss_disc}
+        loss_disc = (loss_real + loss_fake) / 2
 
-        #######################
-        # Train generator ####
-        #######################
-        if optimizer_idx == 1:
-            label = torch.full((len(score_fakes),), real_label, dtype=torch.float).to(device)
-            loss_gen = self.criterion(score_fakes, label)
-
-            ## update and log metrics
-            self.train_loss_gen(loss_gen)
-            self.log("lossG", loss_gen, prog_bar=True)
-            return {"loss": loss_gen}
+        ## update and log metrics
+        self.train_loss_disc(loss_disc)
+        self.log("lossD", loss_disc, prog_bar=True)
+        return {"loss": loss_disc}
 
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
@@ -211,8 +206,7 @@ class CondEventGANModule(LightningModule):
         device = angles_truths.device
 
         ## generate events from the Generator
-        noise = self.generate_noise(num_particles).to(device)
-        angles_generated = self(noise, cluster)
+        angles_generated = self(cluster)
         hadrons_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
         ## compute the WD for the particle kinmatics
