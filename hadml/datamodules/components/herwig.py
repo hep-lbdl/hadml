@@ -1,7 +1,9 @@
 
 import os
 import pickle
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
+import glob
+import math
 
 import numpy as np
 import pandas as pd
@@ -367,9 +369,12 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
 
 class HerwigEventDataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, raw_file_list=None):
-
-        self.raw_file_list = raw_file_list
-
+        
+        self.raw_file_list = []
+        for pattern in raw_file_list:
+            self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
+        self.raw_file_list = [os.path.basename(raw_file) for raw_file in self.raw_file_list]
+        
         pids_map_path = os.path.join(root, pid_map_fname) if root is not None else pid_map_fname
         if os.path.exists(pids_map_path):
             print("Loading existing pids map: ", pids_map_path)
@@ -447,25 +452,22 @@ class HerwigEventDataset(InMemoryDataset):
             theta = np.arctan(pT / pz)
             return phi, theta
 
-        out_4vec = new_inputs[:, -4:]
-        _, px, py, pz = [out_4vec[:, idx] for idx in range(4)]
-        pT = np.sqrt(px**2 + py**2)
-        phi = np.arctan(px / py)
-        theta = np.arctan(pT / pz)
         phi, theta = get_angles(new_inputs[:, -4:])
+        theta = theta + math.pi * (theta<0)
+            
+        angles = np.stack([phi, theta], axis=1)
+        hadrons = np.concatenate([h1, h2], axis=1)
 
-        out_truth = np.stack([phi, theta], axis=1)
-        cond_info = cluster
-
-        # convert particle IDs to indices
-        # then these indices can be embedded in N dim. space
+        ## convert particle IDs to indices
+        ## then these indices can be embedded in N dim. space
         h1_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h1_types))
         h2_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h2_types))
 
         data = Data(
-            x=torch.from_numpy(out_truth).float(),
+            x=torch.from_numpy(angles).float(),
+            hadrons=torch.from_numpy(hadrons).float(),
             edge_index=None,
-            cond_info=torch.from_numpy(cond_info).float(),
+            cluster=torch.from_numpy(cluster).float(),
             ptypes=torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1)).long(),
         )
         return data

@@ -7,4 +7,5 @@ dataset:
   _target_: hadml.datamodules.components.herwig.HerwigEventDataset
   root: ${paths.data_dir}Herwig/
   raw_file_list:
-    - "ClusterTo2Pi0_new.dat"
+    # - "ClusterTo2Pi0_new.dat"
+    - "ClusterTo2Pi0_S*.dat"

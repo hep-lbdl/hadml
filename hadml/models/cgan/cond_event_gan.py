@@ -6,6 +6,7 @@ from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 
 from hadml.metrics.media_logger import log_images
+from hadml.models.components.transform import InvsBoost
 from hadml.utils.utils import conditional_cat
 
 
@@ -21,9 +22,6 @@ class CondEventGANModule(LightningModule):
 
     Parameters:
         noise_dim: dimension of noise vector
-        num_particle_ids: maximum number of particle types
-        num_output_particles: number of outgoing particles
-        num_particle_kinematics: number of outgoing particles' kinematic variables
         generator: generator network
         discriminator: discriminator network
         optimizer_generator: generator optimizer
@@ -35,28 +33,32 @@ class CondEventGANModule(LightningModule):
         self,
         noise_dim: int,
         cond_info_dim: int,
-        num_particle_ids: int,
-        num_output_particles: int,
-        num_particle_kinematics: int,
         generator: torch.nn.Module,
         discriminator: torch.nn.Module,
-        criterion: torch.nn.Module,
         optimizer_generator: torch.optim.Optimizer,
         optimizer_discriminator: torch.optim.Optimizer,
+        generator_prescale: torch.nn.Module,
+        generator_postscale: torch.nn.Module,
+        discriminator_prescale: torch.nn.Module,
+        num_critics: int,
+        num_gen: int,
+        criterion: torch.nn.Module,
+        scheduler_generator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+        scheduler_discriminator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         comparison_fn: Optional[Callable] = None,
     ):
         super().__init__()
 
         self.save_hyperparameters(
             logger=False,
-            ignore=["generator", "discriminator", "comparison_fn", "criterion"],
+            ignore=["generator", "discriminator", "generator_prescale", "generator_postscale", "discriminator_prescale", "comparison_fn", "criterion"],
         )
-
-        # Important: This property activates manual optimization.
-        self.automatic_optimization = False
 
         self.generator = generator
         self.discriminator = discriminator
+        self.generator_prescale = generator_prescale
+        self.generator_postscale = generator_postscale
+        self.discriminator_prescale = discriminator_prescale
         self.comparison_fn = comparison_fn
 
         # loss function
@@ -78,21 +80,61 @@ class CondEventGANModule(LightningModule):
         self.test_nll_best = MinMetric()
 
     def forward(
-        self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
+        self, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        noise = torch.randn(len(cond_info), self.hparams.noise_dim, device=cond_info.device)
+        cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         fakes = self.generator(x_fake)
+        fakes = self.generator_postscale(fakes)
         return fakes
 
     def configure_optimizers(self):
         opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters())  # type: ignore
         opt_disc = self.hparams.optimizer_discriminator(params=self.discriminator.parameters())  # type: ignore
 
-        return opt_disc, opt_gen
+        ## define schedulers
+        if self.hparams.scheduler_generator is not None:
+            sched_gen = self.hparams.scheduler_generator(optimizer=opt_gen)
+            sched_disc = self.hparams.scheduler_discriminator(optimizer=opt_disc)
 
-    def generate_noise(self, num_evts: int):
-        return torch.randn(num_evts, self.hparams.noise_dim)  # type: ignore
+            return (
+                {
+                    "optimizer": opt_disc,
+                    "lr_scheduler": {
+                        "scheduler": sched_disc,
+                        "monitor": "val/min_avg_wd",
+                        "interval": "step",
+                        "frequency": self.trainer.val_check_interval,
+                        "strict": True,
+                        "name": "DiscriminatorLRScheduler"
+                    },
+                    "frequency": self.hparams.num_critics
+                },
+                {
+                    "optimizer": opt_gen,
+                    "lr_scheduler": {
+                        "scheduler": sched_gen,
+                        "monitor": "val/min_avg_wd",
+                        "interval": "step",
+                        "frequency": self.trainer.val_check_interval,
+                        "strict": True,
+                        "name": "GeneratorLRScheduler"
+                    },
+                    "frequency": self.hparams.num_gen
+                })
 
+
+        return (
+            {
+                "optimizer": opt_disc,
+                "frequency": self.hparams.num_critics
+            }, {
+                "optimizer": opt_gen,
+                "frequency": self.hparams.num_gen
+            })
+
+   
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
         # so we need to make sure val_acc_best doesn't store accuracy from these checks
@@ -101,70 +143,53 @@ class CondEventGANModule(LightningModule):
         self.test_wd_best.reset()
         self.test_nll_best.reset()
 
-    def training_step(self, batch: Any, batch_idx: int):
-        real_label = 1
-        fake_label = 0
-
-        x_generated = self._discriminator_step(batch, fake_label, real_label)
-
-        self._generator_step(batch, x_generated, real_label)
-
-    def _generator_step(self, batch: Any, x_generated: torch.Tensor, real_label: int):
-        _, opt_gen = self.optimizers()
-        num_evts = batch.num_graphs
-        device = batch.x.device
-
-        opt_gen.zero_grad()
-
-        score_fakes = self.discriminator(x_generated, batch.batch).squeeze(-1)
-        label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
-        loss_gen = self.criterion(score_fakes, label)
-
-        self.manual_backward(loss_gen)
-        opt_gen.step()
-
-        # update and log metrics
-        self.train_loss_gen(loss_gen)
-        self.log("lossG", loss_gen, prog_bar=True)
-
-    def _discriminator_step(
-        self, batch: Any, fake_label: int, real_label: int
-    ) -> torch.Tensor:
-        opt_disc, _ = self.optimizers()
+    def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
         num_evts = batch.num_graphs
         num_particles = batch.num_nodes
-        cond_info = batch.cond_info
-        x_momenta = batch.x
-        device = batch.x.device
-        noise = self.generate_noise(num_particles).to(device)
+        cluster = batch.cluster
+        x_truth = batch.hadrons.reshape((-1, 4))
+        event_label = torch.cat((batch.batch.reshape(-1, 1), batch.batch.reshape(-1, 1)), dim=1).reshape(-1)
+        
+        ## generate fake batch
+        angles_generated = self(cluster)
+        x_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
-        opt_disc.zero_grad()
+        if optimizer_idx == 0:
+            return self._discriminator_step(x_truth, x_generated, event_label)
 
-        # with real events
-        x_truth = conditional_cat(cond_info, x_momenta, dim=1)
-        score_truth = self.discriminator(x_truth, batch.batch).squeeze(-1)
+        if optimizer_idx == 1:
+            return self._generator_step(x_generated, event_label)
 
-        label = torch.full((num_evts,), real_label, dtype=torch.float).to(device)
+    def _generator_step(self, x_generated, event_label):
+        x_generated = self.discriminator_prescale(x_generated)
+        score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
+        label = torch.ones_like(score_fakes)
+        loss_gen = self.criterion(score_fakes, label)
+
+        ## update and log metrics
+        self.train_loss_gen(loss_gen)
+        self.log("lossG", loss_gen, prog_bar=True)
+        return {"loss": loss_gen}
+
+    def _discriminator_step(self, x_truth, x_generated, event_label):
+        ## with real batch
+        x_truth = self.discriminator_prescale(x_truth)
+        score_truth = self.discriminator(x_truth, event_label).squeeze(-1)
+        label = torch.ones_like(score_truth)
         loss_real = self.criterion(score_truth, label)
 
-        # with fake batch
-        particle_kinematics = self(noise, cond_info)
-        x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
-
-        score_fakes = self.discriminator(x_generated.detach(), batch.batch).squeeze(-1)
-        fake_labels = torch.full((num_evts,), fake_label, dtype=torch.float).to(device)
+        ## with fake batch
+        x_generated = self.discriminator_prescale(x_generated)
+        score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
+        fake_labels = torch.zeros_like(score_fakes)
         loss_fake = self.criterion(score_fakes, fake_labels)
 
         loss_disc = (loss_real + loss_fake) / 2
 
-        self.manual_backward(loss_disc)
-        opt_disc.step()
-
-        # update and log metrics
+        ## update and log metrics
         self.train_loss_disc(loss_disc)
         self.log("lossD", loss_disc, prog_bar=True)
-
-        return x_generated
+        return {"loss": loss_disc}
 
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
@@ -175,34 +200,40 @@ class CondEventGANModule(LightningModule):
 
         num_particles = batch.num_nodes
         num_evts = batch.num_graphs
-        cond_info = batch.cond_info
-        x_momenta = batch.x
-        device = x_momenta.device
+        cluster = batch.cluster
+        angles_truths = batch.x
+        hadrons_truth = batch.hadrons.reshape((-1, 4))
+        device = angles_truths.device
 
-        # generate events from the Generator
-        noise = self.generate_noise(num_particles).to(device)
-        particle_kinematics = self(noise, cond_info)
+        ## generate events from the Generator
+        angles_generated = self(cluster)
+        hadrons_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
-        # compute the WD for the particle kinmatics
-        predictions = particle_kinematics.cpu().detach().numpy()
-        truths = x_momenta.cpu().detach().numpy()
+        ## compute the WD for the particle kinmatics
+        angles_predictions = angles_generated.cpu().detach().numpy()
+        angles_truths = angles_truths.cpu().detach().numpy()
+        hadrons_predictions = hadrons_generated.cpu().detach().numpy()
+        hadrons_truth = hadrons_truth.cpu().detach().numpy()
 
         distances = [
-            stats.wasserstein_distance(predictions[:, idx], truths[:, idx])
-            for idx in range(self.hparams.num_particle_kinematics)
+            stats.wasserstein_distance(hadrons_predictions[:, idx], hadrons_truth[:, idx]) \
+                for idx in range(4)
         ]
         wd_distance = sum(distances) / len(distances)
 
-        return {"wd": wd_distance, "nll": 0.0, "preds": predictions, "truths": truths}
+        return {"wd": wd_distance, "nll": 0.,
+                "angles_preds": angles_predictions, "angles_truths": angles_truths,
+                "hadrons_preds": hadrons_predictions, "hadrons_truth": hadrons_truth}
 
-    def compare(self, predictions, truths, outname) -> None:
+
+    def compare(self, angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname) -> None:
         """Compare the generated events with the real ones
         Parameters:
             perf: dictionary from the step function
         """
         if self.comparison_fn is not None:
-            # compare the generated events with the real ones
-            images = self.comparison_fn(predictions, truths, outname)
+            ## compare the generated events with the real ones
+            images = self.comparison_fn(angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname)
             if self.logger and self.logger.experiment is not None:
                 log_images(
                     self.logger,
@@ -234,9 +265,11 @@ class CondEventGANModule(LightningModule):
             or wd_distance <= self.val_min_avg_wd.compute()
         ):
             outname = f"val-{self.current_epoch}-{batch_idx}"
-            predictions = perf["preds"]
-            truths = perf["truths"]
-            self.compare(predictions, truths, outname)
+            angles_predictions = perf['angles_preds']
+            angles_truths = perf['angles_truths']
+            hadrons_predictions = perf['hadrons_preds']
+            hadrons_truth = perf['hadrons_truth']
+            self.compare(angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname)
 
         return perf, batch_idx
 
@@ -259,11 +292,14 @@ class CondEventGANModule(LightningModule):
         # comparison
         if (
             avg_nll <= self.test_nll_best.compute()
-            or wd_distance <= self.test_wd_best.compute()
+            or \
+            wd_distance <= self.test_wd_best.compute()
         ):
-            outname = f"test-{self.current_epoch}-{batch_idx}"
-            predictions = perf["preds"]
-            truths = perf["truths"]
-            self.compare(predictions, truths, outname)
+                outname = f"test-{self.current_epoch}-{batch_idx}"
+                angles_predictions = perf['angles_preds']
+                angles_truths = perf['angles_truths']
+                hadrons_predictions = perf['hadrons_preds']
+                hadrons_truth = perf['hadrons_truth']
+                self.compare(angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname)
 
         return perf, batch_idx

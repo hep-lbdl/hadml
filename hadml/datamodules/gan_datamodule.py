@@ -128,9 +128,9 @@ class EventGANDataModule(LightningDataModule):
         """
         if not self.data_train and not self.data_val and not self.data_test:
 
-            self.data_train, self.data_val, self.data_test = random_split(
+            self.data_train, self.data_val, self.data_test, _ = random_split(
                 dataset=self.dataset,
-                lengths=self.hparams.train_val_test_split,
+                lengths=self.hparams.train_val_test_split + [len(self.dataset)-sum(self.hparams.train_val_test_split)],
                 generator=torch.Generator().manual_seed(42),
             )
 
