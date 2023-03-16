@@ -209,8 +209,8 @@ def close_loggers() -> None:
 
 
 def get_wasserstein_grad_penalty(D: nn.Module,
-                                 real_inputs: Tuple(Iterable[torch.Tensor], torch.Tensor),
-                                 fake_inputs: Tuple(Iterable[torch.Tensor], torch.Tensor)):
+                                 real_inputs: Tuple[Iterable[torch.Tensor], torch.Tensor],
+                                 fake_inputs: Tuple[Iterable[torch.Tensor], torch.Tensor]):
     """Gradient penalty from https://arxiv.org/abs/1704.00028"""
     if isinstance(real_inputs, torch.Tensor):
         real_inputs = [real_inputs]
