@@ -230,7 +230,7 @@ class CondParticleGANModule(LightningModule):
 
     def _prepare_fake_batch(
         self, cond_info: Optional[torch.Tensor], num_evts: int, device: torch.device
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
