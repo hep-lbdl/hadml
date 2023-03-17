@@ -130,7 +130,7 @@ class EventGANDataModule(LightningDataModule):
 
             self.data_train, self.data_val, self.data_test, _ = random_split(
                 dataset=self.dataset,
-                lengths=self.hparams.train_val_test_split + [len(self.dataset)-sum(self.hparams.train_val_test_split)],
+                lengths=self.hparams.train_val_test_split + [len(self.dataset) - sum(self.hparams.train_val_test_split)],
                 generator=torch.Generator().manual_seed(42),
             )
 

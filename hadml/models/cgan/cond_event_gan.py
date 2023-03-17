@@ -93,7 +93,6 @@ class CondEventGANModule(LightningModule):
         opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters())  # type: ignore
         opt_disc = self.hparams.optimizer_discriminator(params=self.discriminator.parameters())  # type: ignore
 
-        ## define schedulers
         if self.hparams.scheduler_generator is not None:
             sched_gen = self.hparams.scheduler_generator(optimizer=opt_gen)
             sched_disc = self.hparams.scheduler_discriminator(optimizer=opt_disc)
@@ -134,7 +133,7 @@ class CondEventGANModule(LightningModule):
                 "frequency": self.hparams.num_gen
             })
 
-   
+
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
         # so we need to make sure val_acc_best doesn't store accuracy from these checks
@@ -144,13 +143,10 @@ class CondEventGANModule(LightningModule):
         self.test_nll_best.reset()
 
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
-        num_evts = batch.num_graphs
-        num_particles = batch.num_nodes
         cluster = batch.cluster
         x_truth = batch.hadrons.reshape((-1, 4))
         event_label = torch.cat((batch.batch.reshape(-1, 1), batch.batch.reshape(-1, 1)), dim=1).reshape(-1)
-        
-        ## generate fake batch
+
         angles_generated = self(cluster)
         x_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
@@ -166,19 +162,18 @@ class CondEventGANModule(LightningModule):
         label = torch.ones_like(score_fakes)
         loss_gen = self.criterion(score_fakes, label)
 
-        ## update and log metrics
         self.train_loss_gen(loss_gen)
         self.log("lossG", loss_gen, prog_bar=True)
         return {"loss": loss_gen}
 
     def _discriminator_step(self, x_truth, x_generated, event_label):
-        ## with real batch
+        # with real batch
         x_truth = self.discriminator_prescale(x_truth)
         score_truth = self.discriminator(x_truth, event_label).squeeze(-1)
         label = torch.ones_like(score_truth)
         loss_real = self.criterion(score_truth, label)
 
-        ## with fake batch
+        # with fake batch
         x_generated = self.discriminator_prescale(x_generated)
         score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
         fake_labels = torch.zeros_like(score_fakes)
@@ -186,7 +181,7 @@ class CondEventGANModule(LightningModule):
 
         loss_disc = (loss_real + loss_fake) / 2
 
-        ## update and log metrics
+        # update and log metrics
         self.train_loss_disc(loss_disc)
         self.log("lossD", loss_disc, prog_bar=True)
         return {"loss": loss_disc}
@@ -198,26 +193,24 @@ class CondEventGANModule(LightningModule):
     def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
         """Common steps for valiation and testing"""
 
-        num_particles = batch.num_nodes
-        num_evts = batch.num_graphs
         cluster = batch.cluster
         angles_truths = batch.x
         hadrons_truth = batch.hadrons.reshape((-1, 4))
         device = angles_truths.device
 
-        ## generate events from the Generator
+        # generate events from the Generator
         angles_generated = self(cluster)
         hadrons_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
-        ## compute the WD for the particle kinmatics
+        # compute the WD for the particle kinmatics
         angles_predictions = angles_generated.cpu().detach().numpy()
         angles_truths = angles_truths.cpu().detach().numpy()
         hadrons_predictions = hadrons_generated.cpu().detach().numpy()
         hadrons_truth = hadrons_truth.cpu().detach().numpy()
 
         distances = [
-            stats.wasserstein_distance(hadrons_predictions[:, idx], hadrons_truth[:, idx]) \
-                for idx in range(4)
+            stats.wasserstein_distance(hadrons_predictions[:, idx], hadrons_truth[:, idx])
+            for idx in range(4)
         ]
         wd_distance = sum(distances) / len(distances)
 
@@ -232,7 +225,7 @@ class CondEventGANModule(LightningModule):
             perf: dictionary from the step function
         """
         if self.comparison_fn is not None:
-            ## compare the generated events with the real ones
+            # compare the generated events with the real ones
             images = self.comparison_fn(angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname)
             if self.logger and self.logger.experiment is not None:
                 log_images(
@@ -292,14 +285,13 @@ class CondEventGANModule(LightningModule):
         # comparison
         if (
             avg_nll <= self.test_nll_best.compute()
-            or \
-            wd_distance <= self.test_wd_best.compute()
+            or wd_distance <= self.test_wd_best.compute()
         ):
-                outname = f"test-{self.current_epoch}-{batch_idx}"
-                angles_predictions = perf['angles_preds']
-                angles_truths = perf['angles_truths']
-                hadrons_predictions = perf['hadrons_preds']
-                hadrons_truth = perf['hadrons_truth']
-                self.compare(angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname)
+            outname = f"test-{self.current_epoch}-{batch_idx}"
+            angles_predictions = perf['angles_preds']
+            angles_truths = perf['angles_truths']
+            hadrons_predictions = perf['hadrons_preds']
+            hadrons_truth = perf['hadrons_truth']
+            self.compare(angles_predictions, angles_truths, hadrons_predictions, hadrons_truth, outname)
 
         return perf, batch_idx
