@@ -2,7 +2,7 @@ import time
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Callable, List, Iterable, Tuple, Optional, Union
+from typing import Callable, List, Iterable, Optional, Union
 
 import hydra
 import numpy as np
@@ -45,8 +45,12 @@ def task_wrapper(task_func: Callable) -> Callable:
             raise ex
         finally:
             path = Path(cfg.paths.output_dir, "exec_time.log")
-            content = f"'{cfg.task_name}' execution time: {time.time() - start_time} (s)"
-            save_file(path, content)  # save task execution time (even if exception occurs)
+            content = (
+                f"'{cfg.task_name}' execution time: {time.time() - start_time} (s)"
+            )
+            save_file(
+                path, content
+            )  # save task execution time (even if exception occurs)
             close_loggers()  # close loggers (even if exception occurs so multirun won't fail)
 
         log.info(f"Output dir: {cfg.paths.output_dir}")
@@ -208,31 +212,56 @@ def close_loggers() -> None:
             wandb.finish()
 
 
-def get_wasserstein_grad_penalty(D: nn.Module,
-                                 real_inputs: Union[Iterable[torch.Tensor], torch.Tensor],
-                                 fake_inputs: Union[Iterable[torch.Tensor], torch.Tensor]):
+def get_wasserstein_grad_penalty(
+    D: nn.Module,
+    real_inputs: Union[Iterable[torch.Tensor], torch.Tensor],
+    fake_inputs: Union[Iterable[torch.Tensor], torch.Tensor],
+):
     """Gradient penalty from https://arxiv.org/abs/1704.00028"""
     if isinstance(real_inputs, torch.Tensor):
         real_inputs = [real_inputs]
     if isinstance(fake_inputs, torch.Tensor):
         fake_inputs = [fake_inputs]
-    if (len(real_inputs) != len(fake_inputs)) or \
-       np.any([real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)]):
+    if (len(real_inputs) != len(fake_inputs)) or np.any(
+        [real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)]
+    ):
         raise ValueError("Inputs must match in length and shapes!")
 
     device = real_inputs[0].device
     alphas = [torch.rand(x.shape[0], 1).to(device) for x in real_inputs]
 
-    interpolates = [alpha * real + ((1 - alpha) * fake)
-                    for alpha, real, fake in zip(alphas, real_inputs, fake_inputs)]
-    interpolates = [torch.autograd.Variable(x, requires_grad=True) for x in interpolates]
+    interpolates = [
+        alpha * real + ((1 - alpha) * fake)
+        for alpha, real, fake in zip(alphas, real_inputs, fake_inputs)
+    ]
+    interpolates = [x.requires_grad_(True) for x in interpolates]
     score = D(*interpolates)
 
-    gradients = torch.autograd.grad(outputs=score.sum(), inputs=interpolates,
-                                    create_graph=True, retain_graph=True)
+    gradients = torch.autograd.grad(
+        outputs=score.sum(), inputs=interpolates, create_graph=True, retain_graph=True
+    )
     gradients = torch.cat(gradients, dim=1)
 
     gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    return gradient_penalty
+
+
+def get_r1_grad_penalty(
+    D: nn.Module, real_inputs: Union[Iterable[torch.Tensor], torch.Tensor]
+):
+    """Gradient penalty from https://arxiv.org/abs/1801.04406"""
+    if isinstance(real_inputs, torch.Tensor):
+        real_inputs = [real_inputs]
+
+    real_inputs = [x.requires_grad_(True) for x in real_inputs]
+    score = D(*real_inputs)
+
+    gradients = torch.autograd.grad(
+        outputs=score.sum(), inputs=real_inputs, create_graph=True, retain_graph=True
+    )
+    gradients = torch.cat(gradients, dim=1)
+
+    gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
     return gradient_penalty
 
 
