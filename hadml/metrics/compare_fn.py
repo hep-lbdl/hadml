@@ -127,9 +127,10 @@ class CompareParticlesEventGan(HyperparametersMixin):
         else:
             outname = None
 
-        # angles
-        fig, axs = create_plots(1, 2)
+        fig, axs = create_plots(1, 6)
         config = dict(histtype='step', lw=2, density=True)
+
+        # angles
         for idx in range(2):
             xrange = xranges[idx] if xranges else (-1, 1)
             xbin = xbins[idx] if xbins else 40
@@ -142,22 +143,12 @@ class CompareParticlesEventGan(HyperparametersMixin):
             ax.set_ylim(0, max_y)
             ax.legend()
 
-        if outname is not None:
-            plt.savefig(outname+"-angles.png")
-            plt.savefig(outname+"-angles.pdf")
-        ## convert the image to a numpy array
-        out_images['particle kinematics'] = fig_to_array(fig)
-        plt.close('all')
-        # plt.clf()
-
         # 4-momentum
-        fig, axs = create_plots(1, 4)
-        config = dict(histtype='step', lw=2, density=True)
         for idx in range(4):
             xrange = xranges[idx+2] if xranges else (-1, 1)
             xbin = xbins[idx+2] if xbins else 40
 
-            ax = axs[idx]
+            ax = axs[idx+2]
             yvals, _, _ = ax.hist(hadrons_truth[:, idx], bins=xbin, range=xrange, label='Truth', **config)
             max_y = np.max(yvals) * 1.1
             ax.hist(hadrons_predictions[:, idx], bins=xbin, range=xrange, label='Generator', **config)
@@ -166,11 +157,10 @@ class CompareParticlesEventGan(HyperparametersMixin):
             ax.legend()
 
         if outname is not None:
-            plt.savefig(outname+"-p4.png")
-            plt.savefig(outname+"-p4.pdf")
+            plt.savefig(outname+"-kinematics.png")
+            plt.savefig(outname+"-kinematics.pdf")
         ## convert the image to a numpy array
-        out_images['particle 4-momentum'] = fig_to_array(fig)
+        out_images['particle kinematics'] = fig_to_array(fig)
         plt.close('all')
-        plt.clf()
 
         return out_images

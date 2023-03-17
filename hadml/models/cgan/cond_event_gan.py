@@ -144,25 +144,24 @@ class CondEventGANModule(LightningModule):
         self.test_nll_best.reset()
 
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
-        num_evts = batch.num_graphs
-        num_particles = batch.num_nodes
-        cluster = batch.cluster
-        x_truth = batch.hadrons.reshape((-1, 4))
-        event_label = torch.cat((batch.batch.reshape(-1, 1), batch.batch.reshape(-1, 1)), dim=1).reshape(-1)
+        cluster = batch["cond_data"].cluster
+        x_truth = batch["obs_data"].hadrons.reshape((-1, 4))
+        generated_event_label = torch.cat((batch["cond_data"].batch.reshape(-1, 1), batch["cond_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
+        observed_event_label = torch.cat((batch["obs_data"].batch.reshape(-1, 1), batch["obs_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
         
         ## generate fake batch
         angles_generated = self(cluster)
         x_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
         if optimizer_idx == 0:
-            return self._discriminator_step(x_truth, x_generated, event_label)
+            return self._discriminator_step(x_truth, x_generated, observed_event_label, generated_event_label)
 
         if optimizer_idx == 1:
-            return self._generator_step(x_generated, event_label)
+            return self._generator_step(x_generated, generated_event_label)
 
-    def _generator_step(self, x_generated, event_label):
+    def _generator_step(self, x_generated, generated_event_label):
         x_generated = self.discriminator_prescale(x_generated)
-        score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
+        score_fakes = self.discriminator(x_generated, generated_event_label).squeeze(-1)
         label = torch.ones_like(score_fakes)
         loss_gen = self.criterion(score_fakes, label)
 
@@ -171,16 +170,16 @@ class CondEventGANModule(LightningModule):
         self.log("lossG", loss_gen, prog_bar=True)
         return {"loss": loss_gen}
 
-    def _discriminator_step(self, x_truth, x_generated, event_label):
+    def _discriminator_step(self, x_truth, x_generated, observed_event_label, generated_event_label):
         ## with real batch
         x_truth = self.discriminator_prescale(x_truth)
-        score_truth = self.discriminator(x_truth, event_label).squeeze(-1)
+        score_truth = self.discriminator(x_truth, observed_event_label).squeeze(-1)
         label = torch.ones_like(score_truth)
         loss_real = self.criterion(score_truth, label)
 
         ## with fake batch
         x_generated = self.discriminator_prescale(x_generated)
-        score_fakes = self.discriminator(x_generated, event_label).squeeze(-1)
+        score_fakes = self.discriminator(x_generated, generated_event_label).squeeze(-1)
         fake_labels = torch.zeros_like(score_fakes)
         loss_fake = self.criterion(score_fakes, fake_labels)
 
@@ -197,13 +196,9 @@ class CondEventGANModule(LightningModule):
 
     def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
         """Common steps for valiation and testing"""
-
-        num_particles = batch.num_nodes
-        num_evts = batch.num_graphs
-        cluster = batch.cluster
-        angles_truths = batch.x
-        hadrons_truth = batch.hadrons.reshape((-1, 4))
-        device = angles_truths.device
+        cluster = batch["cond_data"].cluster
+        angles_truths = batch["obs_data"].x
+        hadrons_truth = batch["obs_data"].hadrons.reshape((-1, 4))
 
         ## generate events from the Generator
         angles_generated = self(cluster)
