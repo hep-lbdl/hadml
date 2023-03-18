@@ -8,7 +8,11 @@ from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
 
 from hadml.metrics.media_logger import log_images
-from hadml.utils.utils import get_wasserstein_grad_penalty, conditional_cat
+from hadml.utils.utils import (
+    get_wasserstein_grad_penalty,
+    conditional_cat,
+    get_r1_grad_penalty,
+)
 
 
 class CondParticleGANModule(LightningModule):
@@ -44,6 +48,7 @@ class CondParticleGANModule(LightningModule):
         scheduler_discriminator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         loss_type: str = "bce",
         wasserstein_reg: float = 0.0,
+        r1_reg: float = 0.0,
         comparison_fn: Optional[Callable] = None,
     ):
         super().__init__()
@@ -61,6 +66,7 @@ class CondParticleGANModule(LightningModule):
         # loss function
         self.criterion = torch.nn.BCELoss()
         self.wasserstein_reg = wasserstein_reg
+        self.r1_reg = r1_reg
 
         # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
@@ -224,7 +230,7 @@ class CondParticleGANModule(LightningModule):
 
     def _prepare_fake_batch(
         self, cond_info: Optional[torch.Tensor], num_evts: int, device: torch.device
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
@@ -268,7 +274,28 @@ class CondParticleGANModule(LightningModule):
             x_generated.detach(), particle_type_data.detach()
         ).squeeze(-1)
         loss_disc = self._discriminator_loss(score_truth, score_fakes)
-        wasserstein_grad_penalty = 0
+
+        r1_grad_penalty, wasserstein_grad_penalty = self._get_grad_penalties(
+            particle_type_data, x_generated, x_truth, x_type_data
+        )
+
+        self._log_metrics(loss_disc, r1_grad_penalty, wasserstein_grad_penalty)
+        return {"loss": loss_disc + wasserstein_grad_penalty + r1_grad_penalty}
+
+    def _log_metrics(self, loss_disc, r1_grad_penalty, wasserstein_grad_penalty):
+        self.train_loss_disc(loss_disc)
+        self.log("lossD", loss_disc, prog_bar=True)
+        if self.wasserstein_reg > 0:
+            self.log(
+                "wasserstein_grad_penalty", wasserstein_grad_penalty, prog_bar=True
+            )
+        if self.r1_reg > 0:
+            self.log("r1_grad_penalty", r1_grad_penalty, prog_bar=True)
+
+    def _get_grad_penalties(
+        self, particle_type_data, x_generated, x_truth, x_type_data
+    ):
+        wasserstein_grad_penalty = 0.0
         if self.wasserstein_reg > 0:
             wasserstein_grad_penalty = (
                 get_wasserstein_grad_penalty(
@@ -278,14 +305,17 @@ class CondParticleGANModule(LightningModule):
                 )
                 * self.wasserstein_reg
             )
-        # update and log metrics
-        self.train_loss_disc(loss_disc)
-        self.log("lossD", loss_disc, prog_bar=True)
-        if self.wasserstein_reg > 0:
-            self.log(
-                "wasserstein_grad_penalty", wasserstein_grad_penalty, prog_bar=True
+
+        r1_grad_penalty = 0.0
+        if self.r1_reg > 0:
+            r1_grad_penalty = (
+                get_r1_grad_penalty(
+                    self.discriminator,
+                    [x_truth, x_type_data.to(x_truth.dtype)],
+                )
+                * self.r1_reg
             )
-        return {"loss": loss_disc + wasserstein_grad_penalty}
+        return r1_grad_penalty, wasserstein_grad_penalty
 
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
