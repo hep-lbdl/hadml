@@ -144,6 +144,7 @@ dmypy.json
 *.tar
 *.tar.gz
 data/Herwig/raw/*
+data/Herwig/processed/*
 
 # Lightning-Hydra-Template
 configs/local/default.yaml
