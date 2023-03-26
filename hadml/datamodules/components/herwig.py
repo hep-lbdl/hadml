@@ -117,10 +117,10 @@ class Herwig(LightningDataModule):
         # convert particle IDs to indices
         # then these indices can be embedded in N dim. space
         target_hadron_types = (
-            truth_in[:, -self.hparams.num_output_hadrons :].reshape(-1).long()
+            truth_in[:, -self.hparams.num_output_hadrons :].reshape(-1).numpy()
         )
         target_hadron_types_idx = torch.from_numpy(
-            np.vectorize(self.pids_to_ix.get)(target_hadron_types.numpy())
+            np.vectorize(self.pids_to_ix.get)(target_hadron_types.astype(np.int16))
         ).reshape(-1, self.hparams.num_output_hadrons)
 
         self.summarize()
