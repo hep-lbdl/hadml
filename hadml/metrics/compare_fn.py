@@ -7,12 +7,14 @@ import matplotlib.pyplot as plt
 
 from .image_converter import fig_to_array
 
+
 def create_plots(nrows, ncols):
     fig, axs = plt.subplots(
         nrows, ncols,
         figsize=(4 * ncols, 4 * nrows), constrained_layout=False)
     axs = axs.flatten()
     return fig, axs
+
 
 class CompareParticles(HyperparametersMixin):
     def __init__(
@@ -31,11 +33,14 @@ class CompareParticles(HyperparametersMixin):
     def __call__(self, predictions: np.ndarray,
                  truths: np.ndarray,
                  tags: Optional[str] = None) -> Dict[str, Any]:
-        """Expect predictions = [batch_size, num_kinematics + num_particle_type_indices]."""
+        """Expect predictions =
+        [batch_size, num_kinematics + num_particle_type_indices].
+        """
         out_images = {}
 
         _, num_dims = truths.shape
-        assert num_dims == self.hparams.num_kinematics + self.hparams.num_particles
+        assert num_dims == (
+            self.hparams.num_kinematics + self.hparams.num_particles)
 
         xranges = self.hparams.xranges
         xbins = self.hparams.xbins
@@ -55,9 +60,11 @@ class CompareParticles(HyperparametersMixin):
             xbin = xbins[idx] if xbins else 40
 
             ax = axs[idx]
-            yvals, _, _ = ax.hist(truths[:, idx], bins=xbin, range=xrange, label='Truth', **config)
+            yvals, _, _ = ax.hist(truths[:, idx], bins=xbin,
+                                  range=xrange, label='Truth', **config)
             max_y = np.max(yvals) * 1.1
-            ax.hist(predictions[:, idx], bins=xbin, range=xrange, label='Generator', **config)
+            ax.hist(predictions[:, idx], bins=xbin, range=xrange,
+                    label='Generator', **config)
             ax.set_xlabel(r"{}".format(xlabels[idx]))
             ax.set_ylim(0, max_y)
             ax.legend()
@@ -77,13 +84,17 @@ class CompareParticles(HyperparametersMixin):
             bins = self.hparams.num_particle_ids + 1
 
             for idx in range(num_particles):
-                sim_particle_types = predictions[:, self.hparams.num_kinematics + idx]
-                true_particle_types = truths[:, self.hparams.num_kinematics + idx]
+                sim_particle_types = predictions[
+                    :, self.hparams.num_kinematics + idx]
+                true_particle_types = truths[
+                    :, self.hparams.num_kinematics + idx]
 
                 ax = axs[idx]
-                yvals, _, _ = ax.hist(true_particle_types, bins=bins, range=ranges, label='Truth', **config)
+                yvals, _, _ = ax.hist(true_particle_types, bins=bins,
+                                      range=ranges, label='Truth', **config)
                 max_y = np.max(yvals) * 1.1
-                ax.hist(sim_particle_types, bins=bins, range=ranges, label='Generator', **config)
+                ax.hist(sim_particle_types, bins=bins, range=ranges,
+                        label='Generator', **config)
                 ax.set_xlabel(r"{}".format(f"{idx}th particle type"))
                 ax.set_ylim(0, max_y)
                 ax.legend()
@@ -98,28 +109,29 @@ class CompareParticles(HyperparametersMixin):
 
         return out_images
 
+
 class CompareParticlesEventGan(HyperparametersMixin):
     def __init__(
         self,
         xlabels: List[str],
         outdir: Optional[str] = None,
         xranges: Optional[List[Tuple[float, float]]] = None,
-        xbins: Optional[List[int]] = None,
-        ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+        xbins: Optional[List[int]] = None
+            ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         super().__init__()
         self.save_hyperparameters()
-        
+
     def __call__(self, angles_predictions: np.ndarray,
-                angles_truths: np.ndarray,
-                hadrons_predictions: np.ndarray,
-                hadrons_truth: np.ndarray,
-                tags: Optional[str] = None) -> Dict[str, Any]:
-        out_images = {}
-        
+                 angles_truths: np.ndarray,
+                 hadrons_predictions: np.ndarray,
+                 hadrons_truth: np.ndarray,
+                 tags: Optional[str] = None) -> Dict[str, Any]:
+
+        out_images = {}    
         xranges = self.hparams.xranges
         xbins = self.hparams.xbins
         xlabels = self.hparams.xlabels
-        
+
         outname = "dummy" if tags is None else tags
         if self.hparams.outdir is not None:
             os.makedirs(self.hparams.outdir, exist_ok=True)
@@ -136,9 +148,11 @@ class CompareParticlesEventGan(HyperparametersMixin):
             xbin = xbins[idx] if xbins else 40
 
             ax = axs[idx]
-            yvals, _, _ = ax.hist(angles_truths[:, idx], bins=xbin, range=xrange, label='Truth', **config)
+            yvals, _, _ = ax.hist(angles_truths[:, idx], bins=xbin,
+                                  range=xrange, label='Truth', **config)
             max_y = np.max(yvals) * 1.1
-            ax.hist(angles_predictions[:, idx], bins=xbin, range=xrange, label='Generator', **config)
+            ax.hist(angles_predictions[:, idx], bins=xbin, range=xrange,
+                    label='Generator', **config)
             ax.set_xlabel(r"{}".format(xlabels[idx]))
             ax.set_ylim(0, max_y)
             ax.legend()
@@ -149,9 +163,11 @@ class CompareParticlesEventGan(HyperparametersMixin):
             xbin = xbins[idx+2] if xbins else 40
 
             ax = axs[idx+2]
-            yvals, _, _ = ax.hist(hadrons_truth[:, idx], bins=xbin, range=xrange, label='Truth', **config)
+            yvals, _, _ = ax.hist(hadrons_truth[:, idx], bins=xbin,
+                                  range=xrange, label='Truth', **config)
             max_y = np.max(yvals) * 1.1
-            ax.hist(hadrons_predictions[:, idx], bins=xbin, range=xrange, label='Generator', **config)
+            ax.hist(hadrons_predictions[:, idx], bins=xbin, range=xrange,
+                    label='Generator', **config)
             ax.set_xlabel(r"{}".format(xlabels[idx+2]))
             ax.set_ylim(0, max_y)
             ax.legend()
@@ -159,7 +175,7 @@ class CompareParticlesEventGan(HyperparametersMixin):
         if outname is not None:
             plt.savefig(outname+"-kinematics.png")
             plt.savefig(outname+"-kinematics.pdf")
-        ## convert the image to a numpy array
+        # convert the image to a numpy array
         out_images['particle kinematics'] = fig_to_array(fig)
         plt.close('all')
 

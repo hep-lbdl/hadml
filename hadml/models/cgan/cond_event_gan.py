@@ -4,6 +4,7 @@ import torch
 from pytorch_lightning import LightningModule
 from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
+import numpy as np
 
 from hadml.metrics.media_logger import log_images
 from hadml.models.components.transform import InvsBoost
@@ -80,8 +81,6 @@ class CondEventGANModule(LightningModule):
 
         self.test_wd = MeanMetric()
         self.test_nll = MeanMetric()
-        self.test_wd_best = MinMetric()
-        self.test_nll_best = MinMetric()
 
     def forward(
         self, cond_info: Optional[torch.Tensor] = None
@@ -144,10 +143,10 @@ class CondEventGANModule(LightningModule):
     def on_train_start(self):
         # By default lightning runs validation sanity checks before training
         # So we need to ensure val_acc_best excludes sanity check accuracy
+        self.val_wd.reset()
+        self.val_nll.reset()
         self.val_min_avg_wd.reset()
         self.val_min_avg_nll.reset()
-        self.test_wd_best.reset()
-        self.test_nll_best.reset()
 
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
         cluster = batch["cond_data"].cluster
@@ -214,7 +213,13 @@ class CondEventGANModule(LightningModule):
         """Common steps for valiation and testing"""
         cluster = batch["cond_data"].cluster
         angles_truths = batch["obs_data"].x
-        hadrons_truth = batch["obs_data"].hadrons.reshape((-1, 4))
+        hadrons_truths = batch["obs_data"].hadrons.reshape((-1, 4))
+        generated_event_label = torch.cat((
+            batch["cond_data"].batch.reshape(-1, 1),
+            batch["cond_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
+        observed_event_label = torch.cat((
+            batch["obs_data"].batch.reshape(-1, 1),
+            batch["obs_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
 
         # generate events from the Generator
         angles_generated = self(cluster)
@@ -225,12 +230,14 @@ class CondEventGANModule(LightningModule):
         angles_predictions = angles_generated.cpu().detach().numpy()
         angles_truths = angles_truths.cpu().detach().numpy()
         hadrons_predictions = hadrons_generated.cpu().detach().numpy()
-        hadrons_truth = hadrons_truth.cpu().detach().numpy()
+        hadrons_truths = hadrons_truths.cpu().detach().numpy()
+        generated_event_label = generated_event_label.cpu().detach().numpy()
+        observed_event_label = observed_event_label.cpu().detach().numpy()
 
         distances = [
             stats.wasserstein_distance(
                 hadrons_predictions[:, idx],
-                hadrons_truth[:, idx]) for idx in range(4)
+                hadrons_truths[:, idx]) for idx in range(4)
         ]
         wd_distance = sum(distances) / len(distances)
 
@@ -238,7 +245,10 @@ class CondEventGANModule(LightningModule):
                 "angles_preds": angles_predictions,
                 "angles_truths": angles_truths,
                 "hadrons_preds": hadrons_predictions,
-                "hadrons_truth": hadrons_truth}
+                "hadrons_truths": hadrons_truths,
+                "generated_event_label": generated_event_label,
+                "observed_event_label": observed_event_label,
+                }
 
     def compare(self, angles_predictions, angles_truths,
                 hadrons_predictions, hadrons_truth, outname) -> None:
@@ -264,66 +274,115 @@ class CondEventGANModule(LightningModule):
         perf = self.step(batch, batch_idx)
         wd_distance = perf["wd"]
         avg_nll = perf["nll"]
-
-        # update and log metrics
         self.val_wd(wd_distance)
         self.val_nll(avg_nll)
 
+        return perf
+
+    def validation_epoch_end(self, validation_step_outputs):
+        wd_distance = self.val_wd.compute()
+        avg_nll = self.val_nll.compute()
         self.val_min_avg_wd(wd_distance)
         self.val_min_avg_nll(avg_nll)
         self.log("val/wd", wd_distance, on_step=False,
                  on_epoch=True, prog_bar=True)
         self.log("val/nll", avg_nll, on_step=False,
                  on_epoch=True, prog_bar=True)
-
         self.log("val/min_avg_wd", self.val_min_avg_wd.compute(),
                  prog_bar=True)
         self.log("val/min_avg_nll", self.val_min_avg_nll.compute(),
                  prog_bar=True)
 
+        self.val_wd.reset()
+        self.val_nll.reset()
+
         if (
             avg_nll <= self.val_min_avg_nll.compute()
             or wd_distance <= self.val_min_avg_wd.compute()
         ):
-            outname = f"val-{self.current_epoch}-{batch_idx}"
-            angles_predictions = perf['angles_preds']
-            angles_truths = perf['angles_truths']
-            hadrons_predictions = perf['hadrons_preds']
-            hadrons_truth = perf['hadrons_truth']
+            outname = f"val-{self.current_epoch}"
+            angles_predictions = []
+            angles_truths = []
+            hadrons_predictions = []
+            hadrons_truths = []
+            generated_event_label = []
+            observed_event_label = []
+            for perf in validation_step_outputs:
+                angles_predictions = perf['angles_preds'] if len(
+                    angles_predictions) == 0 else np.concatenate(
+                    (angles_predictions, perf['angles_preds']))
+                angles_truths = perf['angles_truths'] if len(
+                    angles_truths) == 0 else np.concatenate(
+                    (angles_truths, perf['angles_truths']))
+                hadrons_predictions = perf['hadrons_preds'] if len(
+                    hadrons_predictions) == 0 else np.concatenate(
+                    (hadrons_predictions, perf['hadrons_preds']))
+                hadrons_truths = perf['hadrons_truths'] if len(
+                    hadrons_truths) == 0 else np.concatenate(
+                    (hadrons_truths, perf['hadrons_truths']))
+                generated_event_label = perf['generated_event_label'] if len(
+                    generated_event_label) == 0 else np.concatenate(
+                    (generated_event_label, perf['generated_event_label']))
+                observed_event_label = perf['observed_event_label'] if len(
+                    observed_event_label) == 0 else np.concatenate(
+                    (observed_event_label, perf['observed_event_label']))
             self.compare(angles_predictions, angles_truths,
-                         hadrons_predictions, hadrons_truth, outname)
-
-        return perf, batch_idx
+                         hadrons_predictions, hadrons_truths, outname)
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
         perf = self.step(batch, batch_idx)
         wd_distance = perf["wd"]
         avg_nll = perf["nll"]
-
-        # update and log metrics
         self.test_wd(wd_distance)
         self.test_nll(avg_nll)
-        self.test_wd_best(wd_distance)
-        self.test_nll_best(avg_nll)
 
+        return perf
+
+    def test_epoch_end(self, test_step_outputs):
+        wd_distance = self.test_wd.compute()
+        avg_nll = self.test_nll.compute()
         self.log("test/wd", wd_distance, on_step=False,
                  on_epoch=True, prog_bar=True)
         self.log("test/nll", avg_nll, on_step=False,
                  on_epoch=True, prog_bar=True)
-        self.log("test/wd_best", self.test_wd_best.compute(), prog_bar=True)
-        self.log("test/nll_best", self.test_nll_best.compute(), prog_bar=True)
-        # comparison
-        if (
-            avg_nll <= self.test_nll_best.compute()
-            or wd_distance <= self.test_wd_best.compute()
-        ):
-            outname = f"test-{self.current_epoch}-{batch_idx}"
-            angles_predictions = perf['angles_preds']
-            angles_truths = perf['angles_truths']
-            hadrons_predictions = perf['hadrons_preds']
-            hadrons_truth = perf['hadrons_truth']
-            self.compare(angles_predictions, angles_truths,
-                         hadrons_predictions, hadrons_truth, outname)
 
-        return perf, batch_idx
+        self.test_wd.reset()
+        self.test_nll.reset()
+
+        outname = f"val-{self.current_epoch}"
+        angles_predictions = []
+        angles_truths = []
+        hadrons_predictions = []
+        hadrons_truths = []
+        generated_event_label = []
+        observed_event_label = []
+        for perf in test_step_outputs:
+            angles_predictions = perf['angles_preds'] if len(
+                angles_predictions) == 0 else np.concatenate(
+                (angles_predictions, perf['angles_preds']))
+            angles_truths = perf['angles_truths'] if len(
+                angles_truths) == 0 else np.concatenate(
+                (angles_truths, perf['angles_truths']))
+            hadrons_predictions = perf['hadrons_preds'] if len(
+                hadrons_predictions) == 0 else np.concatenate(
+                (hadrons_predictions, perf['hadrons_preds']))
+            hadrons_truths = perf['hadrons_truths'] if len(
+                hadrons_truths) == 0 else np.concatenate(
+                (hadrons_truths, perf['hadrons_truths']))
+            generated_event_label = perf['generated_event_label'] if len(
+                generated_event_label) == 0 else np.concatenate(
+                (generated_event_label, perf['generated_event_label']))
+            observed_event_label = perf['observed_event_label'] if len(
+                observed_event_label) == 0 else np.concatenate(
+                (observed_event_label, perf['observed_event_label']))
+        self.compare(angles_predictions, angles_truths,
+                     hadrons_predictions, hadrons_truths, outname)
+
+        np.savez_compressed("final.npz",
+                            angles_predictions=angles_predictions,
+                            angles_truths=angles_truths,
+                            hadrons_predictions=hadrons_predictions,
+                            hadrons_truths=hadrons_truths,
+                            generated_event_label=generated_event_label,
+                            observed_event_label=observed_event_label)
