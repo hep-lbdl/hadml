@@ -44,7 +44,7 @@ datamodule:
   batch_size: 10000
   num_workers: 8
   pin_memory: True
-  train_val_test_split: [26000, 10000, 10000]
+  train_val_test_split: [200000, 30000, 30000]
 
   # batch_size: 500
   # num_workers: 8
@@ -70,7 +70,7 @@ model:
 
   optimizer_generator:
 #     _target_: torch.optim.RMSprop
-    lr: 0.000005
+    lr: 0.0000005
     # lr: 0.000005
 
   optimizer_discriminator:
