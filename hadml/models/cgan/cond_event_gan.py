@@ -378,11 +378,3 @@ class CondEventGANModule(LightningModule):
                 (observed_event_label, perf['observed_event_label']))
         self.compare(angles_predictions, angles_truths,
                      hadrons_predictions, hadrons_truths, outname)
-
-        np.savez_compressed("final.npz",
-                            angles_predictions=angles_predictions,
-                            angles_truths=angles_truths,
-                            hadrons_predictions=hadrons_predictions,
-                            hadrons_truths=hadrons_truths,
-                            generated_event_label=generated_event_label,
-                            observed_event_label=observed_event_label)
