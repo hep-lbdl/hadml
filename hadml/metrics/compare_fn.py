@@ -117,7 +117,7 @@ class CompareParticlesEventGan(HyperparametersMixin):
         outdir: Optional[str] = None,
         xranges: Optional[List[Tuple[float, float]]] = None,
         xbins: Optional[List[int]] = None
-            ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         super().__init__()
         self.save_hyperparameters()
 
@@ -162,22 +162,22 @@ class CompareParticlesEventGan(HyperparametersMixin):
 
         # 4-momentum
         for idx in range(4):
-            xrange = xranges[idx+2] if xranges else (-1, 1)
-            xbin = xbins[idx+2] if xbins else 40
+            xrange = xranges[idx + 2] if xranges else (-1, 1)
+            xbin = xbins[idx + 2] if xbins else 40
 
-            ax = axs[idx+2]
+            ax = axs[idx + 2]
             yvals, _, _ = ax.hist(hadrons_truth[:, idx], bins=xbin,
                                   range=xrange, label='Truth', **config)
             max_y = np.max(yvals) * 1.1
             ax.hist(hadrons_predictions[:, idx], bins=xbin, range=xrange,
                     label='Generator', **config)
-            ax.set_xlabel(r"{}".format(xlabels[idx+2]))
+            ax.set_xlabel(r"{}".format(xlabels[idx + 2]))
             ax.set_ylim(0, max_y)
             ax.legend()
 
         if outname is not None:
-            plt.savefig(outname+"-kinematics.png")
-            plt.savefig(outname+"-kinematics.pdf")
+            plt.savefig(outname + "-kinematics.png")
+            plt.savefig(outname + "-kinematics.pdf")
         # convert the image to a numpy array
         out_images['particle kinematics'] = fig_to_array(fig)
         plt.close('all')

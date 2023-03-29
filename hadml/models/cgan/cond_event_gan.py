@@ -152,9 +152,9 @@ class CondEventGANModule(LightningModule):
         cluster = batch["cond_data"].cluster
         x_truth = batch["obs_data"].hadrons.reshape((-1, 4))
         generated_event_label = batch["cond_data"].batch.repeat_interleave(
-            batch["cond_data"].hadrons.shape[1]//4)
+            batch["cond_data"].hadrons.shape[1] // 4)
         observed_event_label = batch["obs_data"].batch.repeat_interleave(
-            batch["obs_data"].hadrons.shape[1]//4)
+            batch["obs_data"].hadrons.shape[1] // 4)
 
         # generate fake batch
         angles_generated = self(cluster)
@@ -213,9 +213,9 @@ class CondEventGANModule(LightningModule):
         angles_truths = batch["obs_data"].x
         hadrons_truths = batch["obs_data"].hadrons.reshape((-1, 4))
         generated_event_label = batch["cond_data"].batch.repeat_interleave(
-            batch["cond_data"].hadrons.shape[1]//4)
+            batch["cond_data"].hadrons.shape[1] // 4)
         observed_event_label = batch["obs_data"].batch.repeat_interleave(
-            batch["obs_data"].hadrons.shape[1]//4)
+            batch["obs_data"].hadrons.shape[1] // 4)
 
         # generate events from the Generator
         angles_generated = self(cluster)
