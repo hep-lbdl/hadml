@@ -148,13 +148,16 @@ class CompareParticlesEventGan(HyperparametersMixin):
             xbin = xbins[idx] if xbins else 40
 
             ax = axs[idx]
-            yvals, _, _ = ax.hist(angles_truths[:, idx], bins=xbin,
-                                  range=xrange, label='Truth', **config)
-            max_y = np.max(yvals) * 1.1
-            ax.hist(angles_predictions[:, idx], bins=xbin, range=xrange,
-                    label='Generator', **config)
+            max_y = 0
+            if len(angles_truths) > 0:
+                yvals, _, _ = ax.hist(angles_truths[:, idx], bins=xbin,
+                                      range=xrange, label='Truth', **config)
+                max_y = np.max(yvals)
+            yvals, _, _ = ax.hist(angles_predictions[:, idx], bins=xbin,
+                                  range=xrange, label='Generator', **config)
+            max_y = max(max_y, np.max(yvals))
             ax.set_xlabel(r"{}".format(xlabels[idx]))
-            ax.set_ylim(0, max_y)
+            ax.set_ylim(0, max_y * 1.1)
             ax.legend()
 
         # 4-momentum

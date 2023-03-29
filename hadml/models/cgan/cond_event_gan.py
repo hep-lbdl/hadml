@@ -151,12 +151,10 @@ class CondEventGANModule(LightningModule):
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
         cluster = batch["cond_data"].cluster
         x_truth = batch["obs_data"].hadrons.reshape((-1, 4))
-        generated_event_label = torch.cat((
-            batch["cond_data"].batch.reshape(-1, 1),
-            batch["cond_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
-        observed_event_label = torch.cat((
-            batch["obs_data"].batch.reshape(-1, 1),
-            batch["obs_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
+        generated_event_label = batch["cond_data"].batch.repeat_interleave(
+            batch["cond_data"].hadrons.shape[1]//4)
+        observed_event_label = batch["obs_data"].batch.repeat_interleave(
+            batch["obs_data"].hadrons.shape[1]//4)
 
         # generate fake batch
         angles_generated = self(cluster)
@@ -214,12 +212,10 @@ class CondEventGANModule(LightningModule):
         cluster = batch["cond_data"].cluster
         angles_truths = batch["obs_data"].x
         hadrons_truths = batch["obs_data"].hadrons.reshape((-1, 4))
-        generated_event_label = torch.cat((
-            batch["cond_data"].batch.reshape(-1, 1),
-            batch["cond_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
-        observed_event_label = torch.cat((
-            batch["obs_data"].batch.reshape(-1, 1),
-            batch["obs_data"].batch.reshape(-1, 1)), dim=1).reshape(-1)
+        generated_event_label = batch["cond_data"].batch.repeat_interleave(
+            batch["cond_data"].hadrons.shape[1]//4)
+        observed_event_label = batch["obs_data"].batch.repeat_interleave(
+            batch["obs_data"].hadrons.shape[1]//4)
 
         # generate events from the Generator
         angles_generated = self(cluster)
@@ -248,6 +244,7 @@ class CondEventGANModule(LightningModule):
                 "hadrons_truths": hadrons_truths,
                 "generated_event_label": generated_event_label,
                 "observed_event_label": observed_event_label,
+                "has_cluster": "cluster" in batch["obs_data"]
                 }
 
     def compare(self, angles_predictions, angles_truths,
@@ -311,9 +308,10 @@ class CondEventGANModule(LightningModule):
                 angles_predictions = perf['angles_preds'] if len(
                     angles_predictions) == 0 else np.concatenate(
                     (angles_predictions, perf['angles_preds']))
-                angles_truths = perf['angles_truths'] if len(
-                    angles_truths) == 0 else np.concatenate(
-                    (angles_truths, perf['angles_truths']))
+                if perf['has_cluster']:
+                    angles_truths = perf['angles_truths'] if len(
+                        angles_truths) == 0 else np.concatenate(
+                        (angles_truths, perf['angles_truths']))
                 hadrons_predictions = perf['hadrons_preds'] if len(
                     hadrons_predictions) == 0 else np.concatenate(
                     (hadrons_predictions, perf['hadrons_preds']))
@@ -350,7 +348,7 @@ class CondEventGANModule(LightningModule):
         self.test_wd.reset()
         self.test_nll.reset()
 
-        outname = f"val-{self.current_epoch}"
+        outname = f"test-{self.current_epoch}"
         angles_predictions = []
         angles_truths = []
         hadrons_predictions = []
@@ -361,9 +359,10 @@ class CondEventGANModule(LightningModule):
             angles_predictions = perf['angles_preds'] if len(
                 angles_predictions) == 0 else np.concatenate(
                 (angles_predictions, perf['angles_preds']))
-            angles_truths = perf['angles_truths'] if len(
-                angles_truths) == 0 else np.concatenate(
-                (angles_truths, perf['angles_truths']))
+            if perf['has_cluster']:
+                angles_truths = perf['angles_truths'] if len(
+                    angles_truths) == 0 else np.concatenate(
+                    (angles_truths, perf['angles_truths']))
             hadrons_predictions = perf['hadrons_preds'] if len(
                 hadrons_predictions) == 0 else np.concatenate(
                 (hadrons_predictions, perf['hadrons_preds']))
