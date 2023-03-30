@@ -48,7 +48,8 @@ class Herwig(LightningDataModule):
         self.pids_to_ix: Optional[Dict[int, int]] = None
 
         # particle type map
-        self.pids_map_fname = os.path.join(self.hparams.data_dir, pid_map_fname)
+        self.pids_map_fname = os.path.join(self.hparams.data_dir,
+                                           pid_map_fname)
         self.num_hadron_types: int = 0
 
     def prepare_data(self):
@@ -60,7 +61,8 @@ class Herwig(LightningDataModule):
             self.num_hadron_types = len(list(self.pids_to_ix.keys()))
             print("END...Loading existing pids map")
         else:
-            fname = os.path.join(self.hparams.data_dir, self.hparams.origin_fname)
+            fname = os.path.join(self.hparams.data_dir,
+                                 self.hparams.origin_fname)
             if not os.path.exists(fname):
                 raise FileNotFoundError(f"File {fname} not found.")
             df = pd.read_csv(
@@ -99,11 +101,10 @@ class Herwig(LightningDataModule):
         num_tot_evts, self.cond_dim = cond_info.shape
         num_asked_evts = sum(self.hparams.train_val_test_split)
 
-        print(f"Number of events: {num_tot_evts:,}, asking for {num_asked_evts:,}")
+        print(f"Number of events: {num_tot_evts}, asking for {num_asked_evts}")
         if num_tot_evts < num_asked_evts:
             raise ValueError(
-                f"Number of events {num_tot_evts} is less than asked {num_asked_evts}"
-            )
+                f"Asking {num_asked_evts} > {num_tot_evts} available events")
 
         cond_info = cond_info[:num_asked_evts]
         truth_in = truth_in[:num_asked_evts]
@@ -151,9 +152,9 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
 
     Args:
         mode: the mode of the dataset
-        with_quark (bool): add two quark angles in the center-of-mass frame as inputs
-        with_pert (bool): add the `pertinent` flag of the two quarks as inputs
-        with_evts (bool): one row containing one event, instead of one cluster...
+        with_quark (bool): two quark angles in the CM frame as inputs
+        with_pert (bool): the `pertinent` flag of the two quarks as inputs
+        with_evts (bool): one row containing one event, instead of one cluster
     """
 
     def __init__(
@@ -215,7 +216,8 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
             selections = (q1[5] == 1) & (q2[5] == 1)
             print("mode 0: both q1, q2 are with Pert=1")
         elif mode == 1:
-            selections = ((q1[5] == 1) & (q2[5] == 0)) | ((q1[5] == 0) & (q2[5] == 1))
+            selections = (
+                (q1[5] == 1) & (q2[5] == 0)) | ((q1[5] == 0) & (q2[5] == 1))
             print("mode 1: only one of q1 and q2 is with Pert=1")
         elif mode == 2:
             selections = (q1[5] == 0) & (q2[5] == 0)
@@ -281,8 +283,10 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
 
         # cond_info: conditional information
         # out_truth: the output hadron angles
-        cond_info = scaler.transform(cond_info, outname + "_scalar_input4vec.pkl")
-        out_truth = scaler.transform(out_truth, outname + "_scalar_outtruth.pkl")
+        cond_info = scaler.transform(
+            cond_info, outname + "_scalar_input4vec.pkl")
+        out_truth = scaler.transform(
+            out_truth, outname + "_scalar_outtruth.pkl")
 
         # add hadron types to the output, [phi, theta, type1, type2]
         out_truth = np.concatenate([out_truth, h1_types, h2_types], axis=1)
@@ -307,16 +311,14 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
         print("Total entries:", truth_in.shape[0])
 
     def get_outname(self, outname):
-        outname = (
-            outname + f"_mode{self.hparams.mode}" + "_with_quark"
-            if self.hparams.with_quark
-            else outname + f"_mode{self.hparams.mode}"
-        )
-        outname = outname + "_with_pert" if self.hparams.with_pert else outname
+        outname += f"_mode{self.hparams.mode}" + (
+            "_with_quark" if self.hparams.with_quark else "") + (
+            "_with_pert" if self.hparams.with_pert else "")
         return outname
 
     def load_pid_map(self):
-        self.pids_map_fname = os.path.join(self.hparams.data_dir, pid_map_fname)
+        self.pids_map_fname = os.path.join(
+            self.hparams.data_dir, pid_map_fname)
         if os.path.exists(self.pids_map_fname):
             print("Loading existing pids map: ", self.pids_map_fname)
             self.pids_to_ix = pickle.load(open(self.pids_map_fname, "rb"))
@@ -351,7 +353,8 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
                 q2 = q2[[1, 2, 3, 4]]
 
                 if with_quark:
-                    org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
+                    org_inputs = np.concatenate(
+                        [cluster, q1, q2, h1, h2], axis=1)
                 else:
                     org_inputs = np.concatenate([cluster, h1, h2], axis=1)
 
@@ -387,38 +390,27 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
                     x=torch.from_numpy(out_truth),
                     edge_index=None,
                     cond_info=torch.from_numpy(cond_info),
-                    ptypes=torch.from_numpy(
-                        np.concatenate([h1_type_indices, h2_type_indices], axis=1)
-                    ),
+                    ptypes=torch.from_numpy(np.concatenate([
+                        h1_type_indices, h2_type_indices], axis=1)),
                 )
-                torch.save(
-                    data,
-                    os.path.join(
-                        self.hparams.data_dir, outname + f"_{len(datasets)}.pt"
-                    ),
-                )
+                torch.save(data, os.path.join(
+                    self.hparams.data_dir, f"{outname}_{len(datasets)}.pt"))
 
 
 class HerwigEventDataset(InMemoryDataset):
-    def __init__(
-        self,
-        root,
-        transform=None,
-        pre_transform=None,
-        pre_filter=None,
-        raw_file_list=None,
-    ):
+    def __init__(self, root, transform=None, pre_transform=None,
+                 pre_filter=None, raw_file_list=None,
+                 processed_file_name='herwig_graph_data.pt'):
 
         self.raw_file_list = []
         for pattern in raw_file_list:
             self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
         self.raw_file_list = [
-            os.path.basename(raw_file) for raw_file in self.raw_file_list
-        ]
+            os.path.basename(raw_file) for raw_file in self.raw_file_list]
+        self.processed_file_name = processed_file_name
 
-        pids_map_path = (
-            os.path.join(root, pid_map_fname) if root is not None else pid_map_fname
-        )
+        if root:
+            pids_map_path = os.path.join(root, pid_map_fname)
         if os.path.exists(pids_map_path):
             print("Loading existing pids map: ", pids_map_path)
             self.pids_to_ix = pickle.load(open(pids_map_path, "rb"))
@@ -437,7 +429,7 @@ class HerwigEventDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return ["herwig_graph_data.pt"]
+        return [self.processed_file_name]
 
     def download(self):
         pass
@@ -449,7 +441,8 @@ class HerwigEventDataset(InMemoryDataset):
                 data_list = [self._create_data(line) for line in f]
 
             if self.pre_filter is not None:
-                data_list = [data for data in data_list if self.pre_filter(data)]
+                data_list = [
+                    data for data in data_list if self.pre_filter(data)]
 
             if self.pre_transform is not None:
                 data_list = [self.pre_transform(data) for data in data_list]
@@ -500,16 +493,17 @@ class HerwigEventDataset(InMemoryDataset):
 
         # convert particle IDs to indices
         # then these indices can be embedded in N dim. space
-        h1_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h1_types))
-        h2_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h2_types))
+        h1_type_indices = torch.from_numpy(
+            np.vectorize(self.pids_to_ix.get)(h1_types))
+        h2_type_indices = torch.from_numpy(
+            np.vectorize(self.pids_to_ix.get)(h2_types))
 
         data = Data(
             x=torch.from_numpy(angles).float(),
             hadrons=torch.from_numpy(hadrons).float(),
             edge_index=None,
             cluster=torch.from_numpy(cluster).float(),
-            ptypes=torch.from_numpy(
-                np.concatenate([h1_type_indices, h2_type_indices], axis=1)
-            ).long(),
+            ptypes=torch.from_numpy(np.concatenate(
+                [h1_type_indices, h2_type_indices], axis=1)).long(),
         )
         return data
