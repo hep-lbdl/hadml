@@ -1,5 +1,7 @@
 import os
 from typing import List, Tuple, Optional, Any, Dict
+
+from matplotlib import ticker
 from pytorch_lightning.core.mixins import HyperparametersMixin
 
 import numpy as np
@@ -51,16 +53,16 @@ class CompareParticles(HyperparametersMixin):
             outname = None
 
         fig, axs = create_plots(1, self.hparams.num_kinematics)
-        config = dict(histtype="step", lw=2, density=True)
+        config = dict(alpha=0.5, lw=2, density=True)
         for idx in range(self.hparams.num_kinematics):
             xrange = xranges[idx] if xranges else (-1, 1)
             xbin = xbins[idx] if xbins else 40
 
             ax = axs[idx]
-            yvals, _, _ = ax.hist(
+            bin_heights, _, _ = ax.hist(
                 truths[:, idx], bins=xbin, range=xrange, label="Truth", **config
             )
-            max_y = np.max(yvals) * 1.1
+            max_y = np.max(bin_heights) * 1.1
             ax.hist(
                 predictions[:, idx],
                 bins=xbin,
@@ -91,15 +93,14 @@ class CompareParticles(HyperparametersMixin):
                 true_particle_types = truths[:, self.hparams.num_kinematics + idx]
 
                 ax = axs[idx]
-                yvals, _, _ = ax.hist(
+                bin_heights_true, _, patches_true = ax.hist(
                     true_particle_types,
                     bins=bins,
                     range=ranges,
                     label="Truth",
                     **config,
                 )
-                max_y = np.max(yvals) * 1.1
-                ax.hist(
+                bin_heights_false, _, patches_false = ax.hist(
                     sim_particle_types,
                     bins=bins,
                     range=ranges,
@@ -107,8 +108,10 @@ class CompareParticles(HyperparametersMixin):
                     **config,
                 )
                 ax.set_xlabel(r"{}".format(f"{idx}th particle type"))
-                ax.set_yscale("log")
-                ax.set_ylim(1e-4, max_y)
+                bin_heights = np.concatenate([bin_heights_true, bin_heights_false])
+                patches = np.concatenate([patches_true, patches_false])
+
+                self.set_hist_log_scale(ax, patches, bin_heights)
                 ax.legend()
 
             if outname is not None:
@@ -120,6 +123,39 @@ class CompareParticles(HyperparametersMixin):
             plt.close("all")
 
         return out_images
+
+    @staticmethod
+    def set_hist_log_scale(ax, patches, bin_heights):
+        """Set log scale on y-axis of `ax`.
+
+        Set log scale without using `ax.set_scale`. It's assumed that
+        `bin_heights` are from range [0, 1].
+        """
+        if ((bin_heights < 0.0) & (bin_heights > 1.0)).any():
+            raise ValueError("`bin_heights` should be in range [0, 1].")
+
+        nonzero_idx = bin_heights != 0
+        log_heights = np.zeros(bin_heights.shape)
+        log_heights[nonzero_idx] = np.log10(bin_heights[nonzero_idx])
+
+        # bottom ylim will be lower than the lowest frequency
+        ylim_bot = np.min(log_heights) - 0.5
+        log_heights[~nonzero_idx] = ylim_bot
+
+        # modify bin heights to represent logarithm of counts
+        for patch, log_height in zip(patches, log_heights):
+            patch.set_height(log_height - ylim_bot)
+            patch.set_y(ylim_bot)
+
+        minor_ticks = []
+        for i in range(0, -int(np.floor(ylim_bot))):
+            minor_ticks += [
+                np.log10(10 ** (-i) - j / 10 ** (i + 1)) for j in range(1, 9)
+            ]
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax.yaxis.set_minor_locator(ticker.FixedLocator(minor_ticks))
+
+        ax.set_ylim(ylim_bot, 0)
 
 
 class CompareParticlesEventGan(HyperparametersMixin):
