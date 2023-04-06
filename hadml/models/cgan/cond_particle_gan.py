@@ -386,11 +386,13 @@ class CondParticleGANModule(LightningModule):
             # compare the generated events with the real ones
             images = self.comparison_fn(predictions, truths, outname)
             if self.logger and self.logger.experiment is not None:
-                log_images(self.logger, "Particle GAN",
-                           images=list(images.values()), 
-                           caption=list(images.keys()))
-            
-            
+                log_images(
+                    self.logger,
+                    "Particle GAN",
+                    images=list(images.values()),
+                    caption=list(images.keys()),
+                )
+
     def validation_step(self, batch: Any, batch_idx: int):
         """Validation step"""
         perf = self.step(batch, batch_idx)
