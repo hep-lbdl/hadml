@@ -2,7 +2,7 @@ _target_: hadml.datamodules.gan_datamodule.EventGANDataModule
 batch_size: 1
 num_workers: 1
 pin_memory: False
-train_val_test_split: [5, 2, 3]
+train_val_test_split: [0.5, 0.2, 0.3]
 cond_dataset:
   _target_: hadml.datamodules.components.herwig.HerwigEventDataset
   root: ${paths.data_dir}Herwig/

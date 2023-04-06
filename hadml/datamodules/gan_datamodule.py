@@ -16,8 +16,7 @@ class GANDataProtocol(Protocol):
         """Prepare data for training and validation.
         Before the create_dataset function is called."""
 
-    def create_dataset(
-            self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def create_dataset(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Create dataset from core dataset.
         Returns:
             torch.Tensor: conditioinal information
@@ -38,7 +37,7 @@ class ParticleGANDataModule(LightningDataModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False, ignore=['core_dataset'])
+        self.save_hyperparameters(logger=False, ignore=["core_dataset"])
         self.core_dataset = core_dataset
 
         self.data_train: Optional[Dataset] = None
@@ -113,18 +112,23 @@ class EventGANDataModule(LightningDataModule):
         cond_dataset: GeometricDataset,
         obs_dataset: GeometricDataset,
         batch_size: int = 500,
-        train_val_test_split: Tuple[int, int, int] = (5_000, 1_000, 1_000),
+        train_val_test_split: Tuple[float, float, float] = (0.7, 0.15, 0.15),
+        frac_data_used: float = 1.0,
         num_workers: int = 4,
         pin_memory: bool = False,
     ):
         super().__init__()
+        if not (0 < frac_data_used <= 1.0):
+            raise ValueError(
+                f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"
+            )
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(
-            logger=False, ignore=['cond_dataset', 'obs_dataset'])
-        self.cond_dataset = cond_dataset
-        self.obs_dataset = obs_dataset
+        self.save_hyperparameters(logger=False, ignore=["cond_dataset", "obs_dataset"])
+        num_asked_events = int(len(obs_dataset) * frac_data_used)
+        self.cond_dataset = cond_dataset[:num_asked_events]
+        self.obs_dataset = obs_dataset[:num_asked_events]
 
         self.cond_data_train: Optional[Dataset] = None
         self.cond_data_val: Optional[Dataset] = None
@@ -142,29 +146,33 @@ class EventGANDataModule(LightningDataModule):
         with both `trainer.fit()` and `trainer.test()`
         so be careful not to execute things like random split twice!
         """
-        if not self.cond_data_train and not self.cond_data_val \
-                and not self.cond_data_test:
+        if (
+            not self.cond_data_train
+            and not self.cond_data_val
+            and not self.cond_data_test
+        ):
 
-            self.cond_data_train, self.cond_data_val, self.cond_data_test, _ \
-                = random_split(
-                    dataset=self.cond_dataset,
-                    lengths=self.hparams.train_val_test_split + [
-                        len(self.cond_dataset)-sum(
-                            self.hparams.train_val_test_split)],
-                    generator=torch.Generator().manual_seed(42),
-                )
+            (
+                self.cond_data_train,
+                self.cond_data_val,
+                self.cond_data_test,
+            ) = random_split(
+                dataset=self.cond_dataset,
+                lengths=self.hparams.train_val_test_split,
+                generator=torch.Generator().manual_seed(42),
+            )
 
-        if not self.obs_data_train and not self.obs_data_val \
-                and not self.obs_data_test:
+        if not self.obs_data_train and not self.obs_data_val and not self.obs_data_test:
 
-            self.obs_data_train, self.obs_data_val, self.obs_data_test, _ \
-                = random_split(
-                    dataset=self.obs_dataset,
-                    lengths=self.hparams.train_val_test_split + [
-                        len(self.obs_dataset)-sum(
-                            self.hparams.train_val_test_split)],
-                    generator=torch.Generator().manual_seed(42),
-                )
+            (
+                self.obs_data_train,
+                self.obs_data_val,
+                self.obs_data_test,
+            ) = random_split(
+                dataset=self.obs_dataset,
+                lengths=self.hparams.train_val_test_split,
+                generator=torch.Generator().manual_seed(42),
+            )
 
     def train_dataloader(self):
         return {
@@ -181,7 +189,7 @@ class EventGANDataModule(LightningDataModule):
                 num_workers=self.hparams.num_workers,
                 pin_memory=self.hparams.pin_memory,
                 shuffle=True,
-            )
+            ),
         }
 
     def val_dataloader(self):
@@ -199,7 +207,7 @@ class EventGANDataModule(LightningDataModule):
                 num_workers=self.hparams.num_workers,
                 pin_memory=self.hparams.pin_memory,
                 shuffle=False,
-            )
+            ),
         }
         return CombinedLoader(loaders, mode="max_size_cycle")
 
@@ -218,6 +226,6 @@ class EventGANDataModule(LightningDataModule):
                 num_workers=self.hparams.num_workers,
                 pin_memory=self.hparams.pin_memory,
                 shuffle=False,
-            )
+            ),
         }
         return CombinedLoader(loaders, mode="max_size_cycle")

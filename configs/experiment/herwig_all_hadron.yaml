@@ -39,7 +39,9 @@ datamodule:
   batch_size: 5_000
   pin_memory: True
   core_dataset:
-    train_val_test_split: [5_000_000, 5_000, 5_000]
+    train_val_test_split: [ 0.999, 0.0005, 0.0005 ]
+    frac_data_used: 0.1
+
 
 
 ## override /model:

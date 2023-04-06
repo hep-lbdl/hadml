@@ -33,13 +33,19 @@ class Herwig(LightningDataModule):
         data_dir: str = "data/",
         fname: str = "allHadrons_10M_mode4_with_quark_with_pert.npz",
         origin_fname: str = "cluster_ML_allHadrons_10M.txt",
-        train_val_test_split: Tuple[int, int, int] = (100, 50, 50),
+        train_val_test_split: Tuple[float, float, float] = (0.5, 0.25, 0.25),
+        frac_data_used: float = 1.0,
         num_output_hadrons: int = 2,
         num_particle_kinematics: int = 2,
         # hadron_type_embedding_dim: int = 10,
     ):
         """This is for the GAN datamodule. It reads clusters from a file"""
         super().__init__()
+        if not (0 < frac_data_used <= 1.0):
+            raise ValueError(
+                f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"
+            )
+
         self.save_hyperparameters(logger=False)
 
         self.cond_dim: Optional[int] = None
@@ -97,13 +103,9 @@ class Herwig(LightningDataModule):
         truth_in = torch.from_numpy(arrays["out_truth"].astype(np.float32))
 
         num_tot_evts, self.cond_dim = cond_info.shape
-        num_asked_evts = sum(self.hparams.train_val_test_split)
+        num_asked_evts = int(num_tot_evts * self.hparams.frac_data_used)
 
         print(f"Number of events: {num_tot_evts}, asking for {num_asked_evts}")
-        if num_tot_evts < num_asked_evts:
-            raise ValueError(
-                f"Asking {num_asked_evts} > {num_tot_evts} available events"
-            )
 
         cond_info = cond_info[:num_asked_evts]
         truth_in = truth_in[:num_asked_evts]
