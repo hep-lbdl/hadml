@@ -40,7 +40,7 @@ datamodule:
   pin_memory: True
   core_dataset:
     train_val_test_split: [ 0.999, 0.0005, 0.0005 ]
-    frac_data_used: 0.1
+    frac_data_used: 1.0
 
 
 
