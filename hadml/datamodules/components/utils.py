@@ -213,10 +213,7 @@ def process_data_split(
     split_by_count = reduce(
         lambda prev, x: isinstance(x, int) and prev, train_val_test_split, True
     )
-    print(frac_data_used)
-    print(frac_data_used)
-    print(frac_data_used)
-    print(frac_data_used)
+
     if split_by_count:
         if examples_used is not None or frac_data_used is not None:
             raise ValueError(
