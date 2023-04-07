@@ -8,6 +8,8 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
 from torch_geometric.loader import DataLoader as GeometricDataLoader
 from torch_geometric.data.dataset import Dataset as GeometricDataset
 
+from hadml.datamodules.components.utils import process_data_split, get_num_asked_events
+
 
 class GANDataProtocol(Protocol):
     """Define a protocol for GAN data modules."""
@@ -66,6 +68,10 @@ class ParticleGANDataModule(LightningDataModule):
                 generator=torch.Generator().manual_seed(42),
             )
 
+            print(f"Number of training examples: {len(self.data_train)}")
+            print(f"Number of validation examples: {len(self.data_val)}")
+            print(f"Number of test examples: {len(self.data_test)}")
+
     def train_dataloader(self):
         return DataLoader(
             dataset=self.data_train,
@@ -113,20 +119,23 @@ class EventGANDataModule(LightningDataModule):
         obs_dataset: GeometricDataset,
         batch_size: int = 500,
         train_val_test_split: Tuple[float, float, float] = (0.7, 0.15, 0.15),
-        frac_data_used: float = 1.0,
+        frac_data_used: Optional[float] = 1.0,
+        examples_used: Optional[int] = None,
         num_workers: int = 4,
         pin_memory: bool = False,
     ):
         super().__init__()
-        if not (0 < frac_data_used <= 1.0):
-            raise ValueError(
-                f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"
-            )
-
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False, ignore=["cond_dataset", "obs_dataset"])
-        num_asked_events = int(len(obs_dataset) * frac_data_used)
+
+        self.hparams.examples_used = process_data_split(
+            examples_used, frac_data_used, train_val_test_split
+        )
+
+        num_asked_events = get_num_asked_events(
+            self.hparams.examples_used, frac_data_used, len(obs_dataset)
+        )
         self.cond_dataset = cond_dataset[:num_asked_events]
         self.obs_dataset = obs_dataset[:num_asked_events]
 
@@ -173,6 +182,10 @@ class EventGANDataModule(LightningDataModule):
                 lengths=self.hparams.train_val_test_split,
                 generator=torch.Generator().manual_seed(42),
             )
+
+            print(f"Number of training examples: {len(self.obs_data_train)}")
+            print(f"Number of validation examples: {len(self.obs_data_val)}")
+            print(f"Number of test examples: {len(self.obs_data_test)}")
 
     def train_dataloader(self):
         return {

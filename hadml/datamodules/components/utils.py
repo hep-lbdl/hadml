@@ -1,19 +1,20 @@
 import itertools
 import pickle
-from typing import Tuple, List
+from functools import reduce
+from typing import Tuple, List, Optional
 
 import numpy as np
 import pandas as pd
 
 from sklearn.preprocessing import MinMaxScaler
 
-GAN_INPUT_DATA_TYPE = Tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str]]
+GAN_INPUT_DATA_TYPE = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str]]
 
 
 def shuffle(array: np.ndarray):
     from numpy.random import MT19937
     from numpy.random import RandomState, SeedSequence
+
     np_rs = RandomState(MT19937(SeedSequence(123456789)))
     np_rs.shuffle(array)
 
@@ -28,12 +29,11 @@ def read_dataframe(filename, sep=",", engine=None):
         df = pd.concat(df_list, ignore_index=True)
         filename = filename[0]
     else:
-        df = pd.read_csv(filename, sep=sep,
-                         header=None, names=None, engine=engine)
+        df = pd.read_csv(filename, sep=sep, header=None, names=None, engine=engine)
     return df
 
 
-def split_to_float(df, sep=','):
+def split_to_float(df, sep=","):
     out = df
     if type(df.iloc[0]) == str:
         out = df.str.split(sep, expand=True).astype(np.float32)
@@ -50,7 +50,7 @@ def xyz2hep(px, py, pz):
 
 
 def calculate_mass(lorentz_vector: np.ndarray) -> float:
-    """ To calculate the invariant mass of a particle given its 4-vector.
+    """To calculate the invariant mass of a particle given its 4-vector.
 
     Args:
         lorentz_vector: 4 vector [E, px, py, pz]
@@ -58,8 +58,8 @@ def calculate_mass(lorentz_vector: np.ndarray) -> float:
     Returns:
         invariant mass
     """
-    sum_p2 = sum([lorentz_vector[idx]**2 for idx in range(1, 4)])
-    return np.sqrt(lorentz_vector[0]**2 - sum_p2)
+    sum_p2 = sum([lorentz_vector[idx] ** 2 for idx in range(1, 4)])
+    return np.sqrt(lorentz_vector[0] ** 2 - sum_p2)
 
 
 def create_boost_fn(cluster_4vec: np.ndarray):
@@ -68,7 +68,7 @@ def create_boost_fn(cluster_4vec: np.ndarray):
     gamma = E0 / mass
 
     velocity = p0 / gamma / mass
-    v_mag = np.sqrt(sum([velocity[idx]**2 for idx in range(3)]))
+    v_mag = np.sqrt(sum([velocity[idx] ** 2 for idx in range(3)]))
     n = velocity / v_mag
 
     def boost_fn(lab_4vec: np.ndarray):
@@ -98,7 +98,7 @@ def boost(a_row: np.ndarray):
     assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
     boost_fn, _ = create_boost_fn(a_row[:4])
     n_particles = len(a_row) // 4
-    results = [boost_fn(a_row[4 * x: 4 * (x + 1)]) for x in range(n_particles)]
+    results = [boost_fn(a_row[4 * x : 4 * (x + 1)]) for x in range(n_particles)]
     return list(itertools.chain(*[x.tolist() for x in results]))
 
 
@@ -108,7 +108,7 @@ def inv_boost(a_row: np.ndarray):
     assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
     _, inv_boost_fn = create_boost_fn(a_row[:4])
     n_particles = len(a_row) // 4
-    results = [inv_boost_fn(a_row[4*x: 4*(x+1)]) for x in range(n_particles)]
+    results = [inv_boost_fn(a_row[4 * x : 4 * (x + 1)]) for x in range(n_particles)]
     return list(itertools.chain(*[x.tolist() for x in results]))
 
 
@@ -124,17 +124,20 @@ class InputScaler:
         return out_df
 
     def save(self, outname):
-        pickle.dump(self.scaler, open(outname, 'wb'))
+        pickle.dump(self.scaler, open(outname, "wb"))
         return self
 
     def load(self, outname):
-        self.scaler = pickle.load(open(outname, 'rb'))
+        self.scaler = pickle.load(open(outname, "rb"))
         return self
 
     def dump(self):
-        print("Min and Max for inputs: {",
-              ", ".join(["{:.6f}".format(x) for x in self.scaler.data_min_]),
-              ", ".join(["{:.6f}".format(x) for x in self.scaler.data_max_]), "}")
+        print(
+            "Min and Max for inputs: {",
+            ", ".join(["{:.6f}".format(x) for x in self.scaler.data_min_]),
+            ", ".join(["{:.6f}".format(x) for x in self.scaler.data_max_]),
+            "}",
+        )
 
 
 def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
@@ -147,8 +150,8 @@ def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
         filename = filename[0]
 
     arrays = np.load(filename)
-    truth_in = arrays['out_truth'].astype(np.float32)
-    cond_info = arrays['cond_info'].astype(np.float32)
+    truth_in = arrays["out_truth"].astype(np.float32)
+    cond_info = arrays["cond_info"].astype(np.float32)
 
     shuffle(truth_in)
     shuffle(cond_info)
@@ -170,17 +173,20 @@ def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
 
     test_in, train_in = cond_info[:num_test_evts], cond_info[num_test_evts:max_evts]
     test_truth, train_truth = truth_in[:num_test_evts], truth_in[num_test_evts:max_evts]
-    xlabels = ['phi', 'theta']
+    xlabels = ["phi", "theta"]
 
     return (train_in, train_truth, test_in, test_truth, xlabels)
 
 
-def create_dataloader(filename, batch_size, num_workers, max_evts=None, testing_frac=0.1):
+def create_dataloader(
+    filename, batch_size, num_workers, max_evts=None, testing_frac=0.1
+):
     import torch
     from torch.utils.data import TensorDataset, DataLoader
 
     train_cond, train_truth, test_cond, test_truth, xlabels = read(
-        filename, max_evts, testing_frac)
+        filename, max_evts, testing_frac
+    )
     train_cond = torch.from_numpy(train_cond)
     train_truth = torch.from_numpy(train_truth)
     test_cond = torch.from_numpy(test_cond)
@@ -189,7 +195,59 @@ def create_dataloader(filename, batch_size, num_workers, max_evts=None, testing_
     train_dataset = TensorDataset(train_cond, train_truth)
     test_dataset = TensorDataset(test_cond, test_truth)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
+    )
 
     return train_loader, test_loader, xlabels
+
+
+def process_data_split(
+    examples_used: Optional[int],
+    frac_data_used: Optional[float],
+    train_val_test_split: Tuple[float, float, float],
+):
+    split_by_count = reduce(
+        lambda prev, x: isinstance(x, int) and prev, train_val_test_split, True
+    )
+    print(frac_data_used)
+    print(frac_data_used)
+    print(frac_data_used)
+    print(frac_data_used)
+    if split_by_count:
+        if examples_used is not None or frac_data_used is not None:
+            raise ValueError(
+                f"`examples_used` and `frac_data_used` shouldn't be specified when `train_val_test_split` explicitly states the size of each set"
+            )
+        examples_used = sum(train_val_test_split)
+    else:
+        if not np.isclose(sum(train_val_test_split), 1.0):
+            raise ValueError(
+                f"`train_val_test_split` must sum up to 1.0 when fractions are used"
+            )
+        if frac_data_used is not None and examples_used is not None:
+            raise ValueError(
+                f"Specify either `frac_data_used` or `examples_used` but not both!"
+            )
+        if frac_data_used is not None and not (0 < frac_data_used <= 1.0):
+            raise ValueError(
+                f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"
+            )
+    return examples_used
+
+
+def get_num_asked_events(
+    examples_used: Optional[int], frac_data_used: Optional[float], dataset_size: int
+) -> int:
+    if frac_data_used is not None:
+        num_asked_events = int(dataset_size * frac_data_used)
+    elif dataset_size < examples_used:
+        raise ValueError(f"Asking {examples_used} > {dataset_size} available events")
+    else:
+        num_asked_events = examples_used
+
+    print(f"Number of events: {dataset_size}, asking for {num_asked_events}")
+    return num_asked_events

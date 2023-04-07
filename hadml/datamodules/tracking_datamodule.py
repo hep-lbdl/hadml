@@ -1,10 +1,12 @@
 import os
 import numpy as np
 
-from typing import Tuple
+from typing import Tuple, Optional
 import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, random_split
+
+from hadml.datamodules.components.utils import process_data_split, get_num_asked_events
 
 
 class TrackingDataModule(LightningDataModule):
@@ -12,17 +14,17 @@ class TrackingDataModule(LightningDataModule):
         self,
         input_dir,
         train_val_test_split: Tuple[float, float, float] = (0.5, 0.25, 0.25),
-        frac_data_used: float = 1.0,
+        frac_data_used: Optional[float] = 1.0,
+        examples_used: Optional[int] = None,
         num_workers: int = 12,
         pin_memory: bool = False,
     ):
         super().__init__()
-        if not (0 < frac_data_used <= 1.0):
-            raise ValueError(
-                f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"
-            )
-
         self.save_hyperparameters(logger=False)
+
+        self.hparams.examples_used = process_data_split(
+            examples_used, frac_data_used, train_val_test_split
+        )
 
         self.data_train = None
         self.data_val = None
@@ -33,11 +35,9 @@ class TrackingDataModule(LightningDataModule):
         all_events = os.listdir(input_dir)
         all_events = sorted([os.path.join(input_dir, event) for event in all_events])
 
-        num_tot_evts = len(all_events)
-        num_asked_evts = int(self.hparams.frac_data_used * num_tot_evts)
-
-        print(
-            "Use {} events out of total {} events".format(num_asked_evts, num_tot_evts)
+        num_tot_events = len(all_events)
+        num_asked_events = get_num_asked_events(
+            self.hparams.examples_used, self.hparams.frac_data_used, num_tot_events
         )
 
         def read_fn(path):
@@ -51,7 +51,7 @@ class TrackingDataModule(LightningDataModule):
             )
             return data
 
-        loaded_events = [read_fn(event) for event in all_events[:num_asked_evts]]
+        loaded_events = [read_fn(event) for event in all_events[:num_asked_events]]
         self.data_train, self.data_val, self.data_test = random_split(
             loaded_events,
             lengths=self.hparams.train_val_test_split,

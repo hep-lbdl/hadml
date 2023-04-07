@@ -17,6 +17,8 @@ from hadml.datamodules.components.utils import (
     split_to_float,
     InputScaler,
     boost,
+    process_data_split,
+    get_num_asked_events,
 )
 
 from torch_geometric.data import Data
@@ -34,19 +36,17 @@ class Herwig(LightningDataModule):
         fname: str = "allHadrons_10M_mode4_with_quark_with_pert.npz",
         origin_fname: str = "cluster_ML_allHadrons_10M.txt",
         train_val_test_split: Tuple[float, float, float] = (0.5, 0.25, 0.25),
-        frac_data_used: float = 1.0,
+        frac_data_used: Optional[float] = 1.0,
+        examples_used: Optional[int] = None,
         num_output_hadrons: int = 2,
         num_particle_kinematics: int = 2,
         # hadron_type_embedding_dim: int = 10,
     ):
         """This is for the GAN datamodule. It reads clusters from a file"""
         super().__init__()
-        if not (0 < frac_data_used <= 1.0):
-            raise ValueError(
-                f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"
-            )
-
         self.save_hyperparameters(logger=False)
+
+        self.hparams.examples_used = process_data_split(examples_used, frac_data_used, train_val_test_split)
 
         self.cond_dim: Optional[int] = None
         self.output_dim: Optional[int] = None
@@ -103,12 +103,12 @@ class Herwig(LightningDataModule):
         truth_in = torch.from_numpy(arrays["out_truth"].astype(np.float32))
 
         num_tot_evts, self.cond_dim = cond_info.shape
-        num_asked_evts = int(num_tot_evts * self.hparams.frac_data_used)
+        num_asked_events = get_num_asked_events(
+            self.hparams.examples_used, self.hparams.frac_data_used, num_tot_evts
+        )
 
-        print(f"Number of events: {num_tot_evts}, asking for {num_asked_evts}")
-
-        cond_info = cond_info[:num_asked_evts]
-        truth_in = truth_in[:num_asked_evts]
+        cond_info = cond_info[:num_asked_events]
+        truth_in = truth_in[:num_asked_events]
 
         # output includes N hadron types and their momenta
         # output dimension only includes the momenta
