@@ -30,7 +30,7 @@ trainer:
 
 callbacks:
   model_checkpoint:
-    monitor: "val/min_avg_wd"
+    monitor: "val/min_avg_swd"
     mode: "min"
     save_top_k: 5
   
