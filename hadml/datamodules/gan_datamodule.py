@@ -133,9 +133,14 @@ class EventGANDataModule(LightningDataModule):
             examples_used, frac_data_used, train_val_test_split
         )
 
-        num_asked_events = get_num_asked_events(
+        num_asked_events_obs = get_num_asked_events(
             self.hparams.examples_used, frac_data_used, len(obs_dataset)
         )
+        num_asked_events_cond = get_num_asked_events(
+            self.hparams.examples_used, frac_data_used, len(cond_dataset)
+        )
+        num_asked_events = min(num_asked_events_obs, num_asked_events_cond)
+        print(f"Asking for smaller number of events ({num_asked_events})...")
         self.cond_dataset = cond_dataset[:num_asked_events]
         self.obs_dataset = obs_dataset[:num_asked_events]
 
