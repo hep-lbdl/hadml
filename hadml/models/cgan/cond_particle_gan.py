@@ -49,6 +49,7 @@ class CondParticleGANModule(LightningModule):
         loss_type: str = "bce",
         wasserstein_reg: float = 0.0,
         r1_reg: float = 0.0,
+        gumbel_temp: float = 0.2,
         comparison_fn: Optional[Callable] = None,
     ):
         super().__init__()
@@ -67,6 +68,7 @@ class CondParticleGANModule(LightningModule):
         self.criterion = torch.nn.BCELoss()
         self.wasserstein_reg = wasserstein_reg
         self.r1_reg = r1_reg
+        self.gumbel_temp = gumbel_temp
 
         # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
@@ -238,7 +240,7 @@ class CondParticleGANModule(LightningModule):
             particle_type_data = torch.argmax(particle_types, dim=1)
             particle_type_data = particle_type_data.reshape(num_evts, -1)
         else:
-            particle_type_data = F.gumbel_softmax(particle_types, 0.1)
+            particle_type_data = F.gumbel_softmax(particle_types, self.gumbel_temp)
             particle_type_data = particle_type_data.reshape(
                 particle_kinematics.shape[0], -1
             )
@@ -384,11 +386,13 @@ class CondParticleGANModule(LightningModule):
             # compare the generated events with the real ones
             images = self.comparison_fn(predictions, truths, outname)
             if self.logger and self.logger.experiment is not None:
-                log_images(self.logger, "Particle GAN",
-                           images=list(images.values()), 
-                           caption=list(images.keys()))
-            
-            
+                log_images(
+                    self.logger,
+                    "Particle GAN",
+                    images=list(images.values()),
+                    caption=list(images.keys()),
+                )
+
     def validation_step(self, batch: Any, batch_idx: int):
         """Validation step"""
         perf = self.step(batch, batch_idx)

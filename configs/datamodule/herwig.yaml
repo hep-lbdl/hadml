@@ -5,4 +5,4 @@ pin_memory: False
 core_dataset:
   _target_: hadml.datamodules.components.herwig.Herwig
   data_dir: "${paths.data_dir}Herwig"
-  train_val_test_split: [5000, 100, 100]
+  train_val_test_split: [0.96, 0.02, 0.02]

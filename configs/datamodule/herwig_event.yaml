@@ -3,6 +3,7 @@ batch_size: 1
 num_workers: 1
 pin_memory: False
 train_val_test_split: [5, 2, 3]
+frac_data_used:
 cond_dataset:
   _target_: hadml.datamodules.components.herwig.HerwigEventDataset
   root: ${paths.data_dir}Herwig/
