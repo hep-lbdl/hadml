@@ -273,4 +273,4 @@ def conditional_cat(optional: Optional[Tensor], x: Tensor, dim=1):
 
 def get_one_hot(targets, nb_classes):
     res = np.eye(nb_classes)[targets.reshape(-1)]
-    return res.reshape(list(targets.shape)+[nb_classes])
+    return res.reshape(list(targets.shape) + [nb_classes])
