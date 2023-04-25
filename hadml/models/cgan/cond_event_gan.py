@@ -320,7 +320,7 @@ class CondEventGANModule(LightningModule):
                     (hadrons_truths, perf['hadrons_truths']))
                 generated_event_label = perf['generated_event_label'] if len(
                     generated_event_label) == 0 else np.concatenate(
-                    (generated_event_label, perf['generated_event_label']))
+                    (generated_event_label, perf['generated_event_label'] + generated_event_label[-1] + 1))
                 observed_event_label = perf['observed_event_label'] if len(
                     observed_event_label) == 0 else np.concatenate(
                     (observed_event_label, perf['observed_event_label']))
@@ -371,7 +371,7 @@ class CondEventGANModule(LightningModule):
                 (hadrons_truths, perf['hadrons_truths']))
             generated_event_label = perf['generated_event_label'] if len(
                 generated_event_label) == 0 else np.concatenate(
-                (generated_event_label, perf['generated_event_label']))
+                (generated_event_label, perf['generated_event_label'] + generated_event_label[-1] + 1))
             observed_event_label = perf['observed_event_label'] if len(
                 observed_event_label) == 0 else np.concatenate(
                 (observed_event_label, perf['observed_event_label']))
