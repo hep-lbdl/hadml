@@ -217,17 +217,17 @@ def process_data_split(
     if split_by_count:
         if examples_used is not None or frac_data_used is not None:
             raise ValueError(
-                f"`examples_used` and `frac_data_used` shouldn't be specified when `train_val_test_split` explicitly states the size of each set"
+                "`examples_used` and `frac_data_used` shouldn't be specified when `train_val_test_split` explicitly states the size of each set"
             )
         examples_used = sum(train_val_test_split)
     else:
         if not np.isclose(sum(train_val_test_split), 1.0):
             raise ValueError(
-                f"`train_val_test_split` must sum up to 1.0 when fractions are used"
+                "`train_val_test_split` must sum up to 1.0 when fractions are used"
             )
         if frac_data_used is not None and examples_used is not None:
             raise ValueError(
-                f"Specify either `frac_data_used` or `examples_used` but not both!"
+                "Specify either `frac_data_used` or `examples_used` but not both!"
             )
         if frac_data_used is not None and not (0 < frac_data_used <= 1.0):
             raise ValueError(

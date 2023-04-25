@@ -44,19 +44,23 @@ class CondEventGANModule(LightningModule):
         num_critics: int,
         num_gen: int,
         criterion: torch.nn.Module,
-        scheduler_generator: Optional[
-            torch.optim.lr_scheduler._LRScheduler] = None,
-        scheduler_discriminator: Optional[
-            torch.optim.lr_scheduler._LRScheduler] = None,
+        scheduler_generator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+        scheduler_discriminator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         comparison_fn: Optional[Callable] = None,
     ):
         super().__init__()
 
         self.save_hyperparameters(
             logger=False,
-            ignore=["generator", "discriminator", "generator_prescale",
-                    "generator_postscale", "discriminator_prescale",
-                    "comparison_fn", "criterion"],
+            ignore=[
+                "generator",
+                "discriminator",
+                "generator_prescale",
+                "generator_postscale",
+                "discriminator_prescale",
+                "comparison_fn",
+                "criterion",
+            ],
         )
 
         self.generator = generator
@@ -86,7 +90,8 @@ class CondEventGANModule(LightningModule):
         self, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         noise = torch.randn(
-            len(cond_info), self.hparams.noise_dim, device=cond_info.device)
+            len(cond_info), self.hparams.noise_dim, device=cond_info.device
+        )
         cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         fakes = self.generator(x_fake)
@@ -95,15 +100,16 @@ class CondEventGANModule(LightningModule):
 
     def configure_optimizers(self):
         opt_gen = self.hparams.optimizer_generator(
-            params=self.generator.parameters())  # type: ignore
+            params=self.generator.parameters()
+        )  # type: ignore
         opt_disc = self.hparams.optimizer_discriminator(
-            params=self.discriminator.parameters())  # type: ignore
+            params=self.discriminator.parameters()
+        )  # type: ignore
 
         # define schedulers
         if self.hparams.scheduler_generator is not None:
             sched_gen = self.hparams.scheduler_generator(optimizer=opt_gen)
-            sched_disc = self.hparams.scheduler_discriminator(
-                optimizer=opt_disc)
+            sched_disc = self.hparams.scheduler_discriminator(optimizer=opt_disc)
 
             return (
                 {
@@ -114,9 +120,9 @@ class CondEventGANModule(LightningModule):
                         "interval": "step",
                         "frequency": self.trainer.val_check_interval,
                         "strict": True,
-                        "name": "DiscriminatorLRScheduler"
+                        "name": "DiscriminatorLRScheduler",
                     },
-                    "frequency": self.hparams.num_critics
+                    "frequency": self.hparams.num_critics,
                 },
                 {
                     "optimizer": opt_gen,
@@ -126,19 +132,16 @@ class CondEventGANModule(LightningModule):
                         "interval": "step",
                         "frequency": self.trainer.val_check_interval,
                         "strict": True,
-                        "name": "GeneratorLRScheduler"
+                        "name": "GeneratorLRScheduler",
                     },
-                    "frequency": self.hparams.num_gen
-                })
+                    "frequency": self.hparams.num_gen,
+                },
+            )
 
         return (
-            {
-                "optimizer": opt_disc,
-                "frequency": self.hparams.num_critics
-            }, {
-                "optimizer": opt_gen,
-                "frequency": self.hparams.num_gen
-            })
+            {"optimizer": opt_disc, "frequency": self.hparams.num_critics},
+            {"optimizer": opt_gen, "frequency": self.hparams.num_gen},
+        )
 
     def on_train_start(self):
         # By default lightning runs validation sanity checks before training
@@ -152,9 +155,11 @@ class CondEventGANModule(LightningModule):
         cluster = batch["cond_data"].cluster
         x_truth = batch["obs_data"].hadrons.reshape((-1, 4))
         generated_event_label = batch["cond_data"].batch.repeat_interleave(
-            batch["cond_data"].hadrons.shape[1] // 4)
+            batch["cond_data"].hadrons.shape[1] // 4
+        )
         observed_event_label = batch["obs_data"].batch.repeat_interleave(
-            batch["obs_data"].hadrons.shape[1] // 4)
+            batch["obs_data"].hadrons.shape[1] // 4
+        )
 
         # generate fake batch
         angles_generated = self(cluster)
@@ -162,16 +167,15 @@ class CondEventGANModule(LightningModule):
 
         if optimizer_idx == 0:
             return self._discriminator_step(
-                x_truth, x_generated, observed_event_label,
-                generated_event_label)
+                x_truth, x_generated, observed_event_label, generated_event_label
+            )
 
         if optimizer_idx == 1:
             return self._generator_step(x_generated, generated_event_label)
 
     def _generator_step(self, x_generated, generated_event_label):
         x_generated = self.discriminator_prescale(x_generated)
-        score_fakes = self.discriminator(
-            x_generated, generated_event_label).squeeze(-1)
+        score_fakes = self.discriminator(x_generated, generated_event_label).squeeze(-1)
         label = torch.ones_like(score_fakes)
         loss_gen = self.criterion(score_fakes, label)
 
@@ -180,19 +184,18 @@ class CondEventGANModule(LightningModule):
         self.log("lossG", loss_gen, prog_bar=True)
         return {"loss": loss_gen}
 
-    def _discriminator_step(self, x_truth, x_generated,
-                            observed_event_label, generated_event_label):
+    def _discriminator_step(
+        self, x_truth, x_generated, observed_event_label, generated_event_label
+    ):
         # with real batch
         x_truth = self.discriminator_prescale(x_truth)
-        score_truth = self.discriminator(
-            x_truth, observed_event_label).squeeze(-1)
+        score_truth = self.discriminator(x_truth, observed_event_label).squeeze(-1)
         label = torch.ones_like(score_truth)
         loss_real = self.criterion(score_truth, label)
 
         # with fake batch
         x_generated = self.discriminator_prescale(x_generated)
-        score_fakes = self.discriminator(
-            x_generated, generated_event_label).squeeze(-1)
+        score_fakes = self.discriminator(x_generated, generated_event_label).squeeze(-1)
         fake_labels = torch.zeros_like(score_fakes)
         loss_fake = self.criterion(score_fakes, fake_labels)
 
@@ -213,14 +216,15 @@ class CondEventGANModule(LightningModule):
         angles_truths = batch["obs_data"].x
         hadrons_truths = batch["obs_data"].hadrons.reshape((-1, 4))
         generated_event_label = batch["cond_data"].batch.repeat_interleave(
-            batch["cond_data"].hadrons.shape[1] // 4)
+            batch["cond_data"].hadrons.shape[1] // 4
+        )
         observed_event_label = batch["obs_data"].batch.repeat_interleave(
-            batch["obs_data"].hadrons.shape[1] // 4)
+            batch["obs_data"].hadrons.shape[1] // 4
+        )
 
         # generate events from the Generator
         angles_generated = self(cluster)
-        hadrons_generated = InvsBoost(
-            cluster, angles_generated).reshape((-1, 4))
+        hadrons_generated = InvsBoost(cluster, angles_generated).reshape((-1, 4))
 
         # compute the WD for the particle kinmatics
         angles_predictions = angles_generated.cpu().detach().numpy()
@@ -232,23 +236,32 @@ class CondEventGANModule(LightningModule):
 
         distances = [
             stats.wasserstein_distance(
-                hadrons_predictions[:, idx],
-                hadrons_truths[:, idx]) for idx in range(4)
+                hadrons_predictions[:, idx], hadrons_truths[:, idx]
+            )
+            for idx in range(4)
         ]
         wd_distance = sum(distances) / len(distances)
 
-        return {"wd": wd_distance, "nll": 0.,
-                "angles_preds": angles_predictions,
-                "angles_truths": angles_truths,
-                "hadrons_preds": hadrons_predictions,
-                "hadrons_truths": hadrons_truths,
-                "generated_event_label": generated_event_label,
-                "observed_event_label": observed_event_label,
-                "has_cluster": "cluster" in batch["obs_data"]
-                }
+        return {
+            "wd": wd_distance,
+            "nll": 0.0,
+            "angles_preds": angles_predictions,
+            "angles_truths": angles_truths,
+            "hadrons_preds": hadrons_predictions,
+            "hadrons_truths": hadrons_truths,
+            "generated_event_label": generated_event_label,
+            "observed_event_label": observed_event_label,
+            "has_cluster": "cluster" in batch["obs_data"],
+        }
 
-    def compare(self, angles_predictions, angles_truths,
-                hadrons_predictions, hadrons_truth, outname) -> None:
+    def compare(
+        self,
+        angles_predictions,
+        angles_truths,
+        hadrons_predictions,
+        hadrons_truth,
+        outname,
+    ) -> None:
         """Compare the generated events with the real ones
         Parameters:
             perf: dictionary from the step function
@@ -256,8 +269,12 @@ class CondEventGANModule(LightningModule):
         if self.comparison_fn is not None:
             # compare the generated events with the real ones
             images = self.comparison_fn(
-                angles_predictions, angles_truths,
-                hadrons_predictions, hadrons_truth, outname)
+                angles_predictions,
+                angles_truths,
+                hadrons_predictions,
+                hadrons_truth,
+                outname,
+            )
             if self.logger and self.logger.experiment is not None:
                 log_images(
                     self.logger,
@@ -281,14 +298,10 @@ class CondEventGANModule(LightningModule):
         avg_nll = self.val_nll.compute()
         self.val_min_avg_wd(wd_distance)
         self.val_min_avg_nll(avg_nll)
-        self.log("val/wd", wd_distance, on_step=False,
-                 on_epoch=True, prog_bar=True)
-        self.log("val/nll", avg_nll, on_step=False,
-                 on_epoch=True, prog_bar=True)
-        self.log("val/min_avg_wd", self.val_min_avg_wd.compute(),
-                 prog_bar=True)
-        self.log("val/min_avg_nll", self.val_min_avg_nll.compute(),
-                 prog_bar=True)
+        self.log("val/wd", wd_distance, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/min_avg_wd", self.val_min_avg_wd.compute(), prog_bar=True)
+        self.log("val/min_avg_nll", self.val_min_avg_nll.compute(), prog_bar=True)
 
         self.val_wd.reset()
         self.val_nll.reset()
@@ -305,27 +318,53 @@ class CondEventGANModule(LightningModule):
             generated_event_label = []
             observed_event_label = []
             for perf in validation_step_outputs:
-                angles_predictions = perf['angles_preds'] if len(
-                    angles_predictions) == 0 else np.concatenate(
-                    (angles_predictions, perf['angles_preds']))
-                if perf['has_cluster']:
-                    angles_truths = perf['angles_truths'] if len(
-                        angles_truths) == 0 else np.concatenate(
-                        (angles_truths, perf['angles_truths']))
-                hadrons_predictions = perf['hadrons_preds'] if len(
-                    hadrons_predictions) == 0 else np.concatenate(
-                    (hadrons_predictions, perf['hadrons_preds']))
-                hadrons_truths = perf['hadrons_truths'] if len(
-                    hadrons_truths) == 0 else np.concatenate(
-                    (hadrons_truths, perf['hadrons_truths']))
-                generated_event_label = perf['generated_event_label'] if len(
-                    generated_event_label) == 0 else np.concatenate(
-                    (generated_event_label, perf['generated_event_label'] + generated_event_label[-1] + 1))
-                observed_event_label = perf['observed_event_label'] if len(
-                    observed_event_label) == 0 else np.concatenate(
-                    (observed_event_label, perf['observed_event_label']))
-            self.compare(angles_predictions, angles_truths,
-                         hadrons_predictions, hadrons_truths, outname)
+                angles_predictions = (
+                    perf["angles_preds"]
+                    if len(angles_predictions) == 0
+                    else np.concatenate((angles_predictions, perf["angles_preds"]))
+                )
+                if perf["has_cluster"]:
+                    angles_truths = (
+                        perf["angles_truths"]
+                        if len(angles_truths) == 0
+                        else np.concatenate((angles_truths, perf["angles_truths"]))
+                    )
+                hadrons_predictions = (
+                    perf["hadrons_preds"]
+                    if len(hadrons_predictions) == 0
+                    else np.concatenate((hadrons_predictions, perf["hadrons_preds"]))
+                )
+                hadrons_truths = (
+                    perf["hadrons_truths"]
+                    if len(hadrons_truths) == 0
+                    else np.concatenate((hadrons_truths, perf["hadrons_truths"]))
+                )
+                generated_event_label = (
+                    perf["generated_event_label"]
+                    if len(generated_event_label) == 0
+                    else np.concatenate(
+                        (
+                            generated_event_label,
+                            perf["generated_event_label"]
+                            + generated_event_label[-1]
+                            + 1,
+                        )
+                    )
+                )
+                observed_event_label = (
+                    perf["observed_event_label"]
+                    if len(observed_event_label) == 0
+                    else np.concatenate(
+                        (observed_event_label, perf["observed_event_label"])
+                    )
+                )
+            self.compare(
+                angles_predictions,
+                angles_truths,
+                hadrons_predictions,
+                hadrons_truths,
+                outname,
+            )
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
@@ -340,10 +379,8 @@ class CondEventGANModule(LightningModule):
     def test_epoch_end(self, test_step_outputs):
         wd_distance = self.test_wd.compute()
         avg_nll = self.test_nll.compute()
-        self.log("test/wd", wd_distance, on_step=False,
-                 on_epoch=True, prog_bar=True)
-        self.log("test/nll", avg_nll, on_step=False,
-                 on_epoch=True, prog_bar=True)
+        self.log("test/wd", wd_distance, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
 
         self.test_wd.reset()
         self.test_nll.reset()
@@ -356,24 +393,48 @@ class CondEventGANModule(LightningModule):
         generated_event_label = []
         observed_event_label = []
         for perf in test_step_outputs:
-            angles_predictions = perf['angles_preds'] if len(
-                angles_predictions) == 0 else np.concatenate(
-                (angles_predictions, perf['angles_preds']))
-            if perf['has_cluster']:
-                angles_truths = perf['angles_truths'] if len(
-                    angles_truths) == 0 else np.concatenate(
-                    (angles_truths, perf['angles_truths']))
-            hadrons_predictions = perf['hadrons_preds'] if len(
-                hadrons_predictions) == 0 else np.concatenate(
-                (hadrons_predictions, perf['hadrons_preds']))
-            hadrons_truths = perf['hadrons_truths'] if len(
-                hadrons_truths) == 0 else np.concatenate(
-                (hadrons_truths, perf['hadrons_truths']))
-            generated_event_label = perf['generated_event_label'] if len(
-                generated_event_label) == 0 else np.concatenate(
-                (generated_event_label, perf['generated_event_label'] + generated_event_label[-1] + 1))
-            observed_event_label = perf['observed_event_label'] if len(
-                observed_event_label) == 0 else np.concatenate(
-                (observed_event_label, perf['observed_event_label']))
-        self.compare(angles_predictions, angles_truths,
-                     hadrons_predictions, hadrons_truths, outname)
+            angles_predictions = (
+                perf["angles_preds"]
+                if len(angles_predictions) == 0
+                else np.concatenate((angles_predictions, perf["angles_preds"]))
+            )
+            if perf["has_cluster"]:
+                angles_truths = (
+                    perf["angles_truths"]
+                    if len(angles_truths) == 0
+                    else np.concatenate((angles_truths, perf["angles_truths"]))
+                )
+            hadrons_predictions = (
+                perf["hadrons_preds"]
+                if len(hadrons_predictions) == 0
+                else np.concatenate((hadrons_predictions, perf["hadrons_preds"]))
+            )
+            hadrons_truths = (
+                perf["hadrons_truths"]
+                if len(hadrons_truths) == 0
+                else np.concatenate((hadrons_truths, perf["hadrons_truths"]))
+            )
+            generated_event_label = (
+                perf["generated_event_label"]
+                if len(generated_event_label) == 0
+                else np.concatenate(
+                    (
+                        generated_event_label,
+                        perf["generated_event_label"] + generated_event_label[-1] + 1,
+                    )
+                )
+            )
+            observed_event_label = (
+                perf["observed_event_label"]
+                if len(observed_event_label) == 0
+                else np.concatenate(
+                    (observed_event_label, perf["observed_event_label"])
+                )
+            )
+        self.compare(
+            angles_predictions,
+            angles_truths,
+            hadrons_predictions,
+            hadrons_truths,
+            outname,
+        )
