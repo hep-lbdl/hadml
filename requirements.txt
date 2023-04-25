@@ -23,4 +23,5 @@ pytest          # tests
 more_itertools
 pandas
 matplotlib
+pot
 # sh            # for running bash commands in some tests (linux/macos only)

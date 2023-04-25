@@ -1,17 +1,19 @@
 from typing import Any, List, Optional, Dict, Callable, Tuple
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule
-from scipy import stats
 from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
+import ot
 
 from hadml.metrics.media_logger import log_images
 from hadml.utils.utils import (
     get_wasserstein_grad_penalty,
     conditional_cat,
     get_r1_grad_penalty,
+    get_one_hot,
 )
 
 
@@ -51,6 +53,7 @@ class CondParticleGANModule(LightningModule):
         r1_reg: float = 0.0,
         gumbel_temp: float = 0.2,
         comparison_fn: Optional[Callable] = None,
+        save_only_improved_plots: bool = False,
     ):
         super().__init__()
 
@@ -73,17 +76,21 @@ class CondParticleGANModule(LightningModule):
         # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
         self.train_loss_disc = MeanMetric()
-        self.val_wd = MeanMetric()
-        self.val_nll = MeanMetric()
+        self.val_swd = MeanMetric()
+        self.val_particle_swd = MeanMetric()
+        self.val_kinematic_swd = MeanMetric()
 
         # for tracking best so far
-        self.val_min_avg_wd = MinMetric()
-        self.val_min_avg_nll = MinMetric()
+        self.val_min_avg_swd = MinMetric()
+        self.val_min_avg_particle_swd = MinMetric()
+        self.val_min_avg_kinematic_swd = MinMetric()
 
-        self.test_wd = MeanMetric()
-        self.test_nll = MeanMetric()
-        self.test_wd_best = MinMetric()
-        self.test_nll_best = MinMetric()
+        self.test_swd = MeanMetric()
+        self.test_particle_swd = MeanMetric()
+        self.test_kinematic_swd = MeanMetric()
+        self.test_swd_best = MinMetric()
+        self.test_particle_swd_best = MinMetric()
+        self.test_kinematic_swd_best = MinMetric()
 
         self.use_particle_mlp = False
 
@@ -136,7 +143,7 @@ class CondParticleGANModule(LightningModule):
                     "optimizer": opt_disc,
                     "lr_scheduler": {
                         "scheduler": sched_disc,
-                        "monitor": "val/min_avg_wd",
+                        "monitor": "val/min_avg_swd",
                         "interval": "step",
                         "frequency": self.trainer.val_check_interval,
                         "strict": True,
@@ -148,7 +155,7 @@ class CondParticleGANModule(LightningModule):
                     "optimizer": opt_gen,
                     "lr_scheduler": {
                         "scheduler": sched_gen,
-                        "monitor": "val/min_avg_wd",
+                        "monitor": "val/min_avg_swd",
                         "interval": "step",
                         "frequency": self.trainer.val_check_interval,
                         "strict": True,
@@ -169,10 +176,12 @@ class CondParticleGANModule(LightningModule):
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
         # so we need to make sure val_acc_best doesn't store accuracy from these checks
-        self.val_min_avg_wd.reset()
-        self.val_min_avg_nll.reset()
-        self.test_wd_best.reset()
-        self.test_nll_best.reset()
+        self.val_min_avg_swd.reset()
+        self.val_min_avg_particle_swd.reset()
+        self.val_kinematic_swd.reset()
+        self.test_swd_best.reset()
+        self.test_particle_swd_best.reset()
+        self.test_kinematic_swd_best.reset()
 
     def _generator_loss(self, score: torch.Tensor) -> torch.Tensor:
         loss_type = self.hparams.loss_type
@@ -328,30 +337,32 @@ class CondParticleGANModule(LightningModule):
 
         cond_info, x_momenta, x_type_indices = batch
         num_evts, _ = x_momenta.shape
-
         # generate events from the Generator
         noise = self.generate_noise(num_evts).to(x_momenta.device)
         particle_kinematics, particle_types = self(noise, cond_info)
         particle_type_idx = torch.argmax(particle_types, dim=1).reshape(num_evts, -1)
         particle_types = particle_types.reshape(num_evts, -1)
 
-        avg_nll = 0
+        output_particles = []
         if x_type_indices is not None:
-            # evaluate the accuracy of hadron types
-            # with likelihood ratio
             for pidx in range(self.hparams.num_output_particles):
                 pidx_start = pidx * self.hparams.num_particle_ids
                 pidx_end = pidx_start + self.hparams.num_particle_ids
                 gen_types = particle_types[:, pidx_start:pidx_end]
-                # print(gen_types.shape, x_type_indices[:, pidx].shape, pidx_start, pidx_end, particle_types.shape)
-                if self.use_particle_mlp:
-                    log_probability = gen_types
-                else:
-                    log_probability = F.log_softmax(gen_types, dim=1)
-                nll = float(F.nll_loss(log_probability, x_type_indices[:, pidx]))
-                avg_nll += nll
 
-            avg_nll = avg_nll / self.hparams.num_output_particles
+                gen_types = gen_types.detach().cpu().numpy()
+                output_particles.append(gen_types.argmax(axis=1))
+
+        fake_output_particles = get_one_hot(
+            np.stack(output_particles, axis=1), self.hparams.num_particle_ids
+        ).reshape(output_particles[0].shape[0], -1)
+        true_output_particles = get_one_hot(
+            x_type_indices.detach().cpu().numpy(), self.hparams.num_particle_ids
+        ).reshape(x_type_indices.shape[0], -1)
+
+        particle_swd = ot.sliced_wasserstein_distance(
+            fake_output_particles, true_output_particles, n_projections=1000
+        )
 
         predictions = (
             torch.cat([particle_kinematics, particle_type_idx], dim=1)
@@ -361,18 +372,27 @@ class CondParticleGANModule(LightningModule):
         )
         truths = torch.cat([x_momenta, x_type_indices], dim=1).cpu().detach().numpy()
 
-        # compute the WD for the particle kinmatics
-        x_momenta = x_momenta.cpu().detach().numpy()
-        particle_kinematics = particle_kinematics.cpu().detach().numpy()
-        distances = [
-            stats.wasserstein_distance(particle_kinematics[:, idx], x_momenta[:, idx])
-            for idx in range(self.hparams.num_particle_kinematics)
-        ]
-        wd_distance = sum(distances) / len(distances)
+        kinematic_swd = ot.sliced_wasserstein_distance(
+            particle_kinematics.detach().cpu().numpy(),
+            x_momenta.detach().cpu().numpy(),
+            n_projections=100,
+        )
+
+        swd = ot.sliced_wasserstein_distance(
+            np.concatenate(
+                [particle_kinematics.detach().cpu().numpy(), fake_output_particles],
+                axis=1,
+            ),
+            np.concatenate(
+                [x_momenta.detach().cpu().numpy(), true_output_particles], axis=1
+            ),
+            n_projections=1000,
+        )
 
         return {
-            "wd": wd_distance,
-            "nll": avg_nll,
+            "swd": swd,
+            "particle_swd": particle_swd,
+            "kinematic_swd": kinematic_swd,
             "preds": predictions,
             "truths": truths,
         }
@@ -396,24 +416,47 @@ class CondParticleGANModule(LightningModule):
     def validation_step(self, batch: Any, batch_idx: int):
         """Validation step"""
         perf = self.step(batch, batch_idx)
-        wd_distance = perf["wd"]
-        avg_nll = perf["nll"]
+        swd_distance = perf["swd"]
+        particle_swd = perf["particle_swd"]
+        kinematic_swd = perf["kinematic_swd"]
 
         # update and log metrics
-        self.val_wd(wd_distance)
-        self.val_nll(avg_nll)
+        self.val_swd(swd_distance)
+        self.val_kinematic_swd(kinematic_swd)
+        self.val_particle_swd(particle_swd)
 
-        self.val_min_avg_wd(wd_distance)
-        self.val_min_avg_nll(avg_nll)
-        self.log("val/wd", wd_distance, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
+        self.val_min_avg_swd(swd_distance)
+        self.val_min_avg_particle_swd(particle_swd)
+        self.val_min_avg_kinematic_swd(kinematic_swd)
+        self.log("val/swd", swd_distance, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "val/type_swd", particle_swd, on_step=False, on_epoch=True, prog_bar=True
+        )
+        self.log(
+            "val/kinematic_swd",
+            kinematic_swd,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
 
-        self.log("val/min_avg_wd", self.val_min_avg_wd.compute(), prog_bar=True)
-        self.log("val/min_avg_nll", self.val_min_avg_nll.compute(), prog_bar=True)
+        self.log("val/min_avg_swd", self.val_min_avg_swd.compute(), prog_bar=True)
+        self.log(
+            "val/min_avg_kin_swd",
+            self.val_min_avg_kinematic_swd.compute(),
+            prog_bar=True,
+        )
+        self.log(
+            "val/min_avg_type_swd",
+            self.val_min_avg_particle_swd.compute(),
+            prog_bar=True,
+        )
 
         if (
-            avg_nll <= self.val_min_avg_nll.compute()
-            or wd_distance <= self.val_min_avg_wd.compute()
+            not self.hparams.save_only_improved_plots
+            or swd_distance <= self.val_min_avg_swd.compute()
+            or kinematic_swd <= self.val_kinematic_swd.compute()
+            or particle_swd <= self.val_particle_swd.compute()
         ):
             outname = f"val-{self.current_epoch:02d}-{batch_idx:02d}"
             predictions = perf["preds"]
@@ -430,23 +473,42 @@ class CondParticleGANModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
         perf = self.step(batch, batch_idx)
-        wd_distance = perf["wd"]
-        avg_nll = perf["nll"]
+        swd_distance = perf["swd"]
+        particle_swd = perf["particle_swd"]
+        kinematic_swd = perf["kinematic_swd"]
 
         # update and log metrics
-        self.test_wd(wd_distance)
-        self.test_nll(avg_nll)
-        self.test_wd_best(wd_distance)
-        self.test_nll_best(avg_nll)
+        self.test_swd(swd_distance)
+        self.test_particle_swd(particle_swd)
+        self.test_kinematic_swd(kinematic_swd)
 
-        self.log("test/wd", wd_distance, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/nll", avg_nll, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/wd_best", self.test_wd_best.compute(), prog_bar=True)
-        self.log("test/nll_best", self.test_nll_best.compute(), prog_bar=True)
+        self.test_swd_best(swd_distance)
+        self.test_particle_swd_best(particle_swd)
+        self.test_kinematic_swd_best(kinematic_swd)
+        self.log("test/swd", swd_distance, on_step=False, on_epoch=True, prog_bar=True)
+        self.log(
+            "test/particle_swd",
+            particle_swd,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log(
+            "test/kinematic_swd",
+            kinematic_swd,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        self.log("test/swd_best", self.test_swd_best.compute(), prog_bar=True)
+        self.log("test/wd_best", self.test_kinematic_swd_best.compute(), prog_bar=True)
+        self.log("test/wd_best", self.test_particle_swd_best.compute(), prog_bar=True)
         # comparison
         if (
-            avg_nll <= self.test_nll_best.compute()
-            or wd_distance <= self.test_wd_best.compute()
+            not self.hparams.save_only_improved_plots
+            or swd_distance <= self.test_swd_best.compute()
+            or kinematic_swd <= self.test_kinematic_swd_best.compute()
+            or particle_swd <= self.test_particle_swd_best.compute()
         ):
             outname = f"test-{self.current_epoch:02d}-{batch_idx:02d}"
             predictions = perf["preds"]

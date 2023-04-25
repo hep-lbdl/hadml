@@ -269,3 +269,8 @@ def conditional_cat(optional: Optional[Tensor], x: Tensor, dim=1):
     if optional is None:
         return x
     return torch.cat([optional, x], dim=dim)
+
+
+def get_one_hot(targets, nb_classes):
+    res = np.eye(nb_classes)[targets.reshape(-1)]
+    return res.reshape(list(targets.shape) + [nb_classes])
