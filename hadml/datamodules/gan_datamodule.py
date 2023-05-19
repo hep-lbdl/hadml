@@ -34,6 +34,7 @@ class ParticleGANDataModule(LightningDataModule):
         batch_size: int = 5000,
         num_workers: int = 12,
         pin_memory: bool = False,
+        drop_last: bool = False,
     ):
         super().__init__()
 
@@ -79,6 +80,7 @@ class ParticleGANDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
+            drop_last=self.hparams.drop_last,
         )
 
     def val_dataloader(self):
@@ -88,6 +90,7 @@ class ParticleGANDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
+            drop_last=self.hparams.drop_last,
         )
 
     def test_dataloader(self):
@@ -97,6 +100,7 @@ class ParticleGANDataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
+            drop_last=self.hparams.drop_last,
         )
 
     def teardown(self, stage: Optional[str] = None):
