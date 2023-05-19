@@ -388,7 +388,7 @@ class CondParticleGANModule(LightningModule):
             np.concatenate(
                 [x_momenta.detach().cpu().numpy(), true_output_particles], axis=1
             ),
-            n_projections=1000,
+            n_projections=100,
         )
 
         return {
