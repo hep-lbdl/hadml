@@ -33,7 +33,7 @@ embedding_module:
 
 discriminator:
   _target_: hadml.models.components.mlp.MLPModule
-  input_dim: ${eval:${model.cond_info_dim}+${model.num_particle_kinematics}+2*${model.num_particle_ids}}
+  input_dim: ${eval:${model.cond_info_dim}+${model.num_particle_kinematics}}
   hidden_dims: [128, 128]
   output_dim: 1
 
