@@ -64,7 +64,20 @@ class CondParticleGANModule(LightningModule):
 
         self.embedding_module = embedding_module
         self.generator = generator
-        self.discriminator = discriminator
+        # self.discriminator = discriminator
+        class D(LightningModule):
+            def __init__(self):
+                super().__init__()
+                self.d = discriminator
+
+            def forward(self, x_generated, particle_type_data):
+                particle_type_data = particle_type_data
+
+                # return self.d(x_generated, particle_type_data)
+                return self.d(x_generated)
+
+        self.discriminator = D()
+
         self.comparison_fn = comparison_fn
 
         # loss function
