@@ -26,6 +26,7 @@ logger:
   wandb:
     project: "herwigEvents"
     tags: ["herwig", "Events"]
+    name: fit_to_variation
 
 seed: 12345
 
@@ -46,7 +47,6 @@ datamodule:
   num_workers: 8
   pin_memory: True
   train_val_test_split: [200000, 30000, 30000]
-  frac_data_used:
 
 
 # ## override /model:
@@ -54,37 +54,25 @@ model:
   noise_dim: 10
   generator:
     hidden_dims: [256, 256]
-#     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
-#     hidden_dims: [256, 256, 256, 256, 256, 256, 256, 256, 256, 256]
 
   discriminator:
     _target_: hadml.models.components.deep_set.DeepSetModule
-    # _target_: hadml.models.components.deep_set.ClusterInEventModule
-#     encoder_dims: [128, 128, 128, 128, 128, 128, 128, 128]
-#     decoder_dims: [128, 128, 128, 128, 256, 256, 256, 256]
-#     word_embedding_dim: 16
-#     dropout: 0.3
 
   optimizer_generator:
-#     _target_: torch.optim.RMSprop
-    lr: 0.0000005
-    # lr: 0.000005
+    lr: 0.000001
 
   optimizer_discriminator:
-#     _target_: torch.optim.RMSprop
     lr: 0.0001
 
   num_critics: 1
   num_gen: 5
-  
-  # criterion:
-    # _target_: hadml.loss.loss.ls
-    # _target_: hadml.loss.loss.wasserstein
-#   #   reduction: "mean"
 
-#   # optimizer_generator:
-#   #   lr: 0.000001
+cond_dataset:
+  raw_file_list:
+    - "ClusterTo2Pi0_nominal.dat"
+  processed_file_name: "herwig_graph_cond_data.pt"
 
-#   # optimizer_discriminator:
-#   #   lr: 0.000005
-
+obs_dataset:
+  raw_file_list:
+    - "ClusterTo2Pi0_variation.dat"
+  processed_file_name: "herwig_graph_obs_data_variation.pt"
