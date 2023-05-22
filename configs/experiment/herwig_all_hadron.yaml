@@ -48,8 +48,8 @@ datamodule:
 model:
   noise_dim: 64
   # loss_type: "wasserstein" ## "wasserstein" or "bce" or "ls"
-  loss_type: "wasserstein"
-  wasserstein_reg: 1.0
+  loss_type: "bce"
+  wasserstein_reg: 0.0
 
   ## how often the optimizers will be used.
   num_critics: 5
