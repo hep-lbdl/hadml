@@ -36,6 +36,12 @@ python hadml/train.py experiment=herwig_all_hadron
 
 # or run the training for event-level generation
 python hadml/train.py experiment=herwig_event
+
+# to run the training for event-level generation with fitting to the nominal Herwig sample (data samples to be downloaded at https://doi.org/10.5281/zenodo.7958362 and placed at data/Herwig/raw)
+python hadml/train.py experiment=herwig_event_nominal
+
+# to run the training for event-level generation with fitting to the variation Herwig sample (data samples to be downloaded at https://doi.org/10.5281/zenodo.7958362 and placed at data/Herwig/raw)
+python hadml/train.py experiment=herwig_event_variation
 ```
 
 # A crash course on training

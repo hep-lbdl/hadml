@@ -1,4 +1,5 @@
 from typing import Any, List, Optional, Dict, Callable, Tuple
+import os
 
 import torch
 from pytorch_lightning import LightningModule
@@ -47,6 +48,7 @@ class CondEventGANModule(LightningModule):
         scheduler_generator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         scheduler_discriminator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         comparison_fn: Optional[Callable] = None,
+        outdir: Optional[str] = None,
     ):
         super().__init__()
 
@@ -355,7 +357,12 @@ class CondEventGANModule(LightningModule):
                     perf["observed_event_label"]
                     if len(observed_event_label) == 0
                     else np.concatenate(
-                        (observed_event_label, perf["observed_event_label"])
+                        (
+                            observed_event_label,
+                            perf["observed_event_label"]
+                            + observed_event_label[-1]
+                            + 1
+                        )
                     )
                 )
             self.compare(
@@ -365,6 +372,24 @@ class CondEventGANModule(LightningModule):
                 hadrons_truths,
                 outname,
             )
+        if self.current_epoch == 0:
+            os.makedirs(self.hparams.outdir, exist_ok=True)
+            np.savez_compressed(os.path.join(self.hparams.outdir, "initial.npz"),
+                                angles_predictions=angles_predictions,
+                                angles_truths=angles_truths,
+                                hadrons_predictions=hadrons_predictions,
+                                hadrons_truths=hadrons_truths,
+                                generated_event_label=generated_event_label,
+                                observed_event_label=observed_event_label)
+        if self.current_epoch == self.trainer.max_epochs - 1:
+            os.makedirs(self.hparams.outdir, exist_ok=True)
+            np.savez_compressed(os.path.join(self.hparams.outdir, "final.npz"),
+                                angles_predictions=angles_predictions,
+                                angles_truths=angles_truths,
+                                hadrons_predictions=hadrons_predictions,
+                                hadrons_truths=hadrons_truths,
+                                generated_event_label=generated_event_label,
+                                observed_event_label=observed_event_label)
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
@@ -420,7 +445,9 @@ class CondEventGANModule(LightningModule):
                 else np.concatenate(
                     (
                         generated_event_label,
-                        perf["generated_event_label"] + generated_event_label[-1] + 1,
+                        perf["generated_event_label"]
+                        + generated_event_label[-1]
+                        + 1
                     )
                 )
             )
@@ -428,7 +455,12 @@ class CondEventGANModule(LightningModule):
                 perf["observed_event_label"]
                 if len(observed_event_label) == 0
                 else np.concatenate(
-                    (observed_event_label, perf["observed_event_label"])
+                    (
+                        observed_event_label,
+                        perf["observed_event_label"]
+                        + observed_event_label[-1]
+                        + 1
+                    )
                 )
             )
         self.compare(
@@ -438,3 +470,13 @@ class CondEventGANModule(LightningModule):
             hadrons_truths,
             outname,
         )
+
+        os.makedirs(self.hparams.outdir, exist_ok=True)
+        np.savez_compressed(os.path.join(self.hparams.outdir, "best.npz"),
+                            angles_predictions=angles_predictions,
+                            angles_truths=angles_truths,
+                            hadrons_predictions=hadrons_predictions,
+                            hadrons_truths=hadrons_truths,
+                            generated_event_label=generated_event_label,
+                            observed_event_label=observed_event_label)
+        

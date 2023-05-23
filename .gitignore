@@ -152,3 +152,14 @@ logs/
 .env
 .autoenv
 data/MNIST
+
+# Slurm
+slurm*.out
+
+# Outputs
+*.pdf
+*.csv
+*.npz
+
+# Temp Scripts
+*.ipynb

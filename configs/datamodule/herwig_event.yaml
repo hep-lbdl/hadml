@@ -11,18 +11,12 @@ cond_dataset:
     # - "ClusterTo2Pi0_new.dat"
     - "ClusterTo2Pi0_S111*.dat"
   processed_file_name: "herwig_graph_cond_data.pt"
-obs_dataset:
-  _target_: hadml.datamodules.components.pythia.PythiaEventDataset
-  root: ${paths.data_dir}Pythia/
-  raw_file_list:
-    # - "all_pion_2k.dat"
-    - "pythia_data.dat"
-  processed_file_name: "pythia_graph_obs_data.pt"
 
-# obs_dataset:
-#   _target_: hadml.datamodules.components.herwig.HerwigEventDataset
-#   root: ${paths.data_dir}Herwig/
-#   raw_file_list:
-#     # - "ClusterTo2Pi0_new.dat"
-#     - "ClusterTo2Pi0_S112*.dat"
-#   processed_file_name: "herwig_graph_obs_data.pt"
+obs_dataset:
+  _target_: hadml.datamodules.components.herwig.HerwigEventDataset
+  root: ${paths.data_dir}Herwig/
+  raw_file_list:
+    # - "ClusterTo2Pi0_S112*.dat"
+    - "ClusterTo2Pi0_variation.dat"
+  # processed_file_name: "herwig_graph_obs_data.pt"
+  processed_file_name: "herwig_graph_obs_data_variation.pt"
