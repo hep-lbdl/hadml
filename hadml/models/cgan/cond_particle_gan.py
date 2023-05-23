@@ -264,7 +264,9 @@ class CondParticleGANModule(LightningModule):
             particle_type_data = torch.argmax(particle_types, dim=1)
             particle_type_data = particle_type_data.reshape(num_evts, -1)
         else:
-            particle_type_data = F.gumbel_softmax(particle_types, self.gumbel_temp)
+            particle_types = particle_types.view(-1, self.hparams.num_particle_ids)
+            particle_type_data = F.gumbel_softmax(particle_types,
+                                                  self.gumbel_temp)
             particle_type_data = particle_type_data.reshape(
                 particle_kinematics.shape[0], -1
             )
