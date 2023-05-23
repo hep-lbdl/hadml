@@ -261,8 +261,7 @@ class CondParticleGANModule(LightningModule):
 
         particle_kinematics, particle_types = self(noise, cond_info)
         if self.embedding_module is None:
-            particle_type_data = torch.argmax(particle_types, dim=1)
-            particle_type_data = particle_type_data.reshape(num_evts, -1)
+            raise NotImplementedError("Embedding module must be specified.")
         else:
             particle_types = particle_types.view(-1, self.hparams.num_particle_ids)
             particle_type_data = F.gumbel_softmax(particle_types,
