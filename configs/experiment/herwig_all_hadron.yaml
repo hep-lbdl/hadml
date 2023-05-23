@@ -41,6 +41,7 @@ datamodule:
   core_dataset:
     train_val_test_split: [ 0.999, 0.0005, 0.0005 ]
     frac_data_used: 1.0
+    num_used_hadron_types: 10
 
 
 
@@ -62,6 +63,7 @@ model:
   discriminator:
     hidden_dims: ${gen_list:256,2} # = [256, 256]
     dropout: 0
+    input_dim: 30
   
   
   # criterion:

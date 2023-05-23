@@ -41,6 +41,7 @@ class Herwig(LightningDataModule):
         num_output_hadrons: int = 2,
         num_particle_kinematics: int = 2,
         # hadron_type_embedding_dim: int = 10,
+        num_used_hadron_types: Optional[int] = None
     ):
         """This is for the GAN datamodule. It reads clusters from a file"""
         super().__init__()
@@ -63,7 +64,10 @@ class Herwig(LightningDataModule):
         if os.path.exists(self.pids_map_fname):
             print("Loading existing pids map")
             self.pids_to_ix = pickle.load(open(self.pids_map_fname, "rb"))
-            self.num_hadron_types = len(list(self.pids_to_ix.keys()))
+            if self.hparams.num_used_hadron_types is None:
+                self.num_hadron_types = len(list(self.pids_to_ix.keys()))
+            else:
+                self.num_hadron_types = self.hparams.num_used_hadron_types
             print("END...Loading existing pids map")
         else:
             fname = os.path.join(self.hparams.data_dir, self.hparams.origin_fname)
@@ -86,7 +90,10 @@ class Herwig(LightningDataModule):
             hadron_pids = list(map(lambda x: x[0], count.most_common()))
 
             self.pids_to_ix = {pids: i for i, pids in enumerate(hadron_pids)}
-            self.num_hadron_types = len(hadron_pids)
+            if self.hparams.num_used_hadron_types is None:
+                self.num_hadron_types = len(hadron_pids)
+            else:
+                self.num_hadron_types = self.hparams.num_used_hadron_types
 
             pickle.dump(self.pids_to_ix, open(self.pids_map_fname, "wb"))
 
@@ -127,8 +134,16 @@ class Herwig(LightningDataModule):
             np.vectorize(self.pids_to_ix.get)(target_hadron_types.astype(np.int16))
         ).reshape(-1, self.hparams.num_output_hadrons)
 
+        dataset = (cond_info, true_hadron_momenta, target_hadron_types_idx)
+
+        if self.hparams.num_used_hadron_types is not None:
+            used_idx = target_hadron_types_idx < self.hparams.num_used_hadron_types
+            used_idx = used_idx.sum(axis=1).eq(used_idx.shape[1])
+            print(f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used.")
+            dataset = tuple(table[used_idx] for table in dataset)
+
         self.summarize()
-        return (cond_info, true_hadron_momenta, target_hadron_types_idx)
+        return dataset
 
     def summarize(self):
         print(f"Reading data from: {self.hparams.data_dir}")
