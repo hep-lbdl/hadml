@@ -370,7 +370,7 @@ class CondEventGANModule(LightningModule):
                 angles_truths,
                 hadrons_predictions,
                 hadrons_truths,
-                outname
+                outname,
             )
         if self.current_epoch == 0:
             os.makedirs(self.hparams.outdir, exist_ok=True)
@@ -468,7 +468,7 @@ class CondEventGANModule(LightningModule):
             angles_truths,
             hadrons_predictions,
             hadrons_truths,
-            outname
+            outname,
         )
 
         os.makedirs(self.hparams.outdir, exist_ok=True)
