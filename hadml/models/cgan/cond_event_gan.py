@@ -320,27 +320,58 @@ class CondEventGANModule(LightningModule):
             generated_event_label = []
             observed_event_label = []
             for perf in validation_step_outputs:
-                angles_predictions = perf['angles_preds'] if len(
-                    angles_predictions) == 0 else np.concatenate(
-                    (angles_predictions, perf['angles_preds']))
+                angles_predictions = (
+                    perf['angles_preds']
+                    if len(angles_predictions) == 0
+                    else np.concatenate((angles_predictions, perf['angles_preds']))
+                )
                 if perf['has_cluster']:
-                    angles_truths = perf['angles_truths'] if len(
-                        angles_truths) == 0 else np.concatenate(
-                        (angles_truths, perf['angles_truths']))
-                hadrons_predictions = perf['hadrons_preds'] if len(
-                    hadrons_predictions) == 0 else np.concatenate(
-                    (hadrons_predictions, perf['hadrons_preds']))
-                hadrons_truths = perf['hadrons_truths'] if len(
-                    hadrons_truths) == 0 else np.concatenate(
-                    (hadrons_truths, perf['hadrons_truths']))
-                generated_event_label = perf['generated_event_label'] if len(
-                    generated_event_label) == 0 else np.concatenate(
-                    (generated_event_label, perf['generated_event_label'] + generated_event_label[-1] + 1))
-                observed_event_label = perf['observed_event_label'] if len(
-                    observed_event_label) == 0 else np.concatenate(
-                    (observed_event_label, perf['observed_event_label'] + observed_event_label[-1] + 1))
-            self.compare(angles_predictions, angles_truths,
-                         hadrons_predictions, hadrons_truths, outname)
+                    angles_truths = (
+                        perf["angles_truths"]
+                        if len(angles_truths) == 0
+                        else np.concatenate((angles_truths, perf["angles_truths"]))
+                    )
+                hadrons_predictions = (
+                    perf["hadrons_preds"]
+                    if len(hadrons_predictions) == 0
+                    else np.concatenate((hadrons_predictions, perf["hadrons_preds"]))
+                )
+                hadrons_truths = (
+                    perf["hadrons_truths"]
+                    if len(hadrons_truths) == 0
+                    else np.concatenate((hadrons_truths, perf["hadrons_truths"]))
+                )
+                generated_event_label = (
+                    perf["generated_event_label"]
+                    if len(generated_event_label) == 0
+                    else np.concatenate(
+                        (
+                            generated_event_label,
+                            perf["generated_event_label"]
+                            + generated_event_label[-1]
+                            + 1,
+                        )
+                    )
+                )
+                observed_event_label = (
+                    perf["observed_event_label"]
+                    if len(observed_event_label) == 0
+                    else np.concatenate(
+                        (
+                            observed_event_label,
+                            perf["observed_event_label"]
+                            + observed_event_label[-1]
+                            + 1
+                        )
+                    )
+                )
+            self.compare(
+                angles_predictions,
+                angles_truths,
+                hadrons_predictions,
+                hadrons_truths,
+                outname
+            )
         if self.current_epoch == 0:
             os.makedirs(self.hparams.outdir, exist_ok=True)
             np.savez_compressed(os.path.join(self.hparams.outdir, "initial.npz"),
@@ -387,27 +418,58 @@ class CondEventGANModule(LightningModule):
         generated_event_label = []
         observed_event_label = []
         for perf in test_step_outputs:
-            angles_predictions = perf['angles_preds'] if len(
-                angles_predictions) == 0 else np.concatenate(
-                (angles_predictions, perf['angles_preds']))
+            angles_predictions = (
+                perf['angles_preds']
+                if len(angles_predictions) == 0
+                else np.concatenate((angles_predictions, perf['angles_preds']))
+            )
             if perf['has_cluster']:
-                angles_truths = perf['angles_truths'] if len(
-                    angles_truths) == 0 else np.concatenate(
-                    (angles_truths, perf['angles_truths']))
-            hadrons_predictions = perf['hadrons_preds'] if len(
-                hadrons_predictions) == 0 else np.concatenate(
-                (hadrons_predictions, perf['hadrons_preds']))
-            hadrons_truths = perf['hadrons_truths'] if len(
-                hadrons_truths) == 0 else np.concatenate(
-                (hadrons_truths, perf['hadrons_truths']))
-            generated_event_label = perf['generated_event_label'] if len(
-                generated_event_label) == 0 else np.concatenate(
-                (generated_event_label, perf['generated_event_label'] + generated_event_label[-1] + 1))
-            observed_event_label = perf['observed_event_label'] if len(
-                observed_event_label) == 0 else np.concatenate(
-                (observed_event_label, perf['observed_event_label'] + observed_event_label[-1] + 1))
-        self.compare(angles_predictions, angles_truths,
-                     hadrons_predictions, hadrons_truths, outname)
+                angles_truths = (
+                    perf['angles_truths']
+                    if len(angles_truths) == 0
+                    else np.concatenate((angles_truths, perf['angles_truths']))
+                )
+            hadrons_predictions = (
+                perf['hadrons_preds']
+                if len(hadrons_predictions) == 0
+                else np.concatenate((hadrons_predictions, perf['hadrons_preds']))
+            )
+            hadrons_truths = (
+                perf['hadrons_truths']
+                if len(hadrons_truths) == 0
+                else np.concatenate((hadrons_truths, perf['hadrons_truths']))
+            )
+            generated_event_label = (
+                perf['generated_event_label']
+                if len(generated_event_label) == 0
+                else np.concatenate(
+                    (
+                        generated_event_label,
+                        perf['generated_event_label']
+                        + generated_event_label[-1]
+                        + 1
+                    )
+                )
+            )
+            observed_event_label = (
+                perf['observed_event_label']
+                if len(observed_event_label) == 0
+                else np.concatenate(
+                    (
+                        observed_event_label,
+                        perf['observed_event_label']
+                        + observed_event_label[-1]
+                        + 1
+                    )
+                )
+            )
+        self.compare(
+            angles_predictions,
+            angles_truths,
+            hadrons_predictions,
+            hadrons_truths,
+            outname
+        )
 
         os.makedirs(self.hparams.outdir, exist_ok=True)
         np.savez_compressed(os.path.join(self.hparams.outdir, "best.npz"),
