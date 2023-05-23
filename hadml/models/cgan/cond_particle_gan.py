@@ -74,7 +74,7 @@ class CondParticleGANModule(LightningModule):
                 particle_type_data = particle_type_data
 
                 # return self.d(x_generated, particle_type_data)
-                return self.d(x_generated)
+                return self.d(x_generated, particle_type_data)
 
         self.discriminator = D()
 
