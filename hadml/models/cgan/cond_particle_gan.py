@@ -106,11 +106,13 @@ class CondParticleGANModule(LightningModule):
         self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         x_fake = conditional_cat(cond_info, noise, dim=1)
-        return (
-            self._call_mlp_particle_generator(x_fake)
-            if self.use_particle_mlp
-            else self._call_mlp_generator(x_fake)
-        )
+        if self.use_particle_mlp:
+            particle_kinematics, particle_types = self._call_mlp_particle_generator(x_fake)
+        else:
+            particle_kinematics, particle_types = self._call_mlp_generator(x_fake)
+        particle_kinematics = torch.tanh(particle_kinematics)
+        return particle_kinematics, particle_types
+
 
     def _call_mlp_particle_generator(
         self, x_fake: torch.Tensor
@@ -386,7 +388,7 @@ class CondParticleGANModule(LightningModule):
             np.concatenate(
                 [x_momenta.detach().cpu().numpy(), true_output_particles], axis=1
             ),
-            n_projections=1000,
+            n_projections=100,
         )
 
         return {

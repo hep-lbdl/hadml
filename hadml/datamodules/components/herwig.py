@@ -115,6 +115,8 @@ class Herwig(LightningDataModule):
         self.output_dim = truth_in.shape[1] - self.hparams.num_output_hadrons
 
         true_hadron_momenta = truth_in[:, : -self.hparams.num_output_hadrons]
+        true_hadron_momenta += 1
+        true_hadron_momenta[true_hadron_momenta > 1] = true_hadron_momenta[true_hadron_momenta > 1] - 2
 
         # convert particle IDs to indices
         # then these indices can be embedded in N dim. space

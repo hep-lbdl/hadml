@@ -26,7 +26,7 @@ seed: 12345
 
 trainer:
   max_epochs: 3
-  val_check_interval: 50
+  val_check_interval: 0.5
 
 callbacks:
   model_checkpoint:

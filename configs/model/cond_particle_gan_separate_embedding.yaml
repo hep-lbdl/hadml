@@ -26,8 +26,6 @@ generator:
   output_dim: ${eval:${model.num_particle_ids}*${model.num_output_particles}+${model.num_particle_kinematics}}
   layer_norm: true
   dropout: 0.0
-  last_activation:
-    _target_: torch.nn.Tanh
 
 embedding_module:
   _target_: hadml.models.components.mlp.OneHotEmbeddingModule
