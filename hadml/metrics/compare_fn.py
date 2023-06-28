@@ -237,7 +237,60 @@ class CompareParticlesEventGan(HyperparametersMixin):
             plt.savefig(outname + "-kinematics.png")
             plt.savefig(outname + "-kinematics.pdf")
         # convert the image to a numpy array
-        out_images["particle kinematics"] = fig_to_array(fig)
+        out_images[f"particle kinematics {self.hparams.outdir}"] = fig_to_array(fig)
+        plt.close("all")
+
+        return out_images
+
+class CompareParticlesEventDisc(HyperparametersMixin):
+    def __init__(
+        self,
+        xlabels: List[str],
+        outdir: Optional[str] = None,
+        xranges: Optional[List[Tuple[float, float]]] = None,
+        xbins: Optional[List[int]] = None,
+    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+        super().__init__()
+        self.save_hyperparameters()
+
+    def __call__(
+        self,
+        score_generated: np.ndarray,
+        score_truths: np.ndarray,
+        tags: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        out_images = {}
+
+        xranges = self.hparams.xranges
+        xbins = self.hparams.xbins
+        xlabels = self.hparams.xlabels
+
+        outname = "dummy" if tags is None else tags
+        if self.hparams.outdir is not None:
+            os.makedirs(self.hparams.outdir, exist_ok=True)
+            outname = os.path.join(self.hparams.outdir, outname)
+        else:
+            outname = None
+
+        config = dict(histtype="step", lw=2, density=True)
+
+        xrange = xranges[0] if xranges else (-1, 1)
+        xbin = xbins[0] if xbins else 40
+
+        plt.hist(score_generated, bins=xbin,
+                                range=xrange, label='Generator', **config)
+        plt.hist(score_truths, bins=xbin,
+                                range=xrange, label='Truth', **config)
+
+        plt.xlabel(r"{}".format(xlabels[0]))
+        # plt.ylim(0, max_y * 1.1)
+        plt.legend()
+
+        if outname is not None:
+            plt.savefig(outname + "-kinematics.png")
+            plt.savefig(outname + "-kinematics.pdf")
+        # convert the image to a numpy array
+        out_images[f"particle kinematics {self.hparams.outdir}"] = fig_to_array(plt.gcf())
         plt.close("all")
 
         return out_images

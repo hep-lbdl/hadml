@@ -1,0 +1,64 @@
+_target_: hadml.models.cgan.event_discriminator.EventDiscModule
+noise_dim: 10
+cond_info_dim: 4
+
+## how often the optimizers will be used.
+num_critics: 1
+num_gen: 5
+
+optimizer_generator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.00001
+
+optimizer_discriminator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0001
+
+generator:
+  _target_: hadml.models.components.mlp.MLPModule
+  # _target_: hadml.models.components.mlp_res.ResMLPModule
+  input_dim: ${eval:${model.noise_dim}+${model.cond_info_dim}} 
+  hidden_dims: ${gen_list:256,2}
+  output_dim: 2
+  layer_norm: true
+  dropout: 0.0
+  last_activation:
+    _target_: torch.nn.Tanh
+
+discriminator:
+  _target_: hadml.models.components.deep_set.DeepSetModule
+  input_dim: 4
+  encoder_dims:  ${gen_list:128,2}
+  decoder_dims: ${gen_list:128,2}
+  output_dim: 1
+  last_activation:
+    _target_: torch.nn.Sigmoid
+
+generator_prescale:
+  _target_: hadml.models.components.transform.NormModule
+  val_max: [50., 50., 50., 50]
+  val_min: [0., -50., -50., -50]
+
+generator_postscale:
+  _target_: hadml.models.components.transform.InvsNormModule
+  val_max: [1.570796326794897 , 3.141592653589793]
+  val_min: [-1.570796326794897, 0]
+
+discriminator_prescale:
+  _target_: hadml.models.components.transform.NormModule
+  val_max: [40., 30., 30., 30]
+  val_min: [0., -30., -30., -30.]
+
+criterion:
+  _target_: torch.nn.BCELoss
+
+comparison_fn:
+  _target_: hadml.metrics.compare_fn.CompareParticlesEventDisc
+  xlabels: [score]
+  xranges: [[0, 1]]
+  outdir: ${paths.output_dir}/images
+
+outdir:
+  ${paths.output_dir}/data

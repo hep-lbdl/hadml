@@ -1,0 +1,78 @@
+# @package _global_
+
+# start the environment
+# conda-start torch
+
+# to execute this experiment run:
+# python src/train.py experiment=herwig_event
+## to add a logger
+# python src/train.py experiment=herwig_all_hadron logger=wandb
+
+## with training techniques
+# python src/train.py experiment=herwig_all_hadron logger=wandb +trainer.gradient_clip_val=0.5
+
+defaults:
+  - override /datamodule: herwig_event.yaml
+  - override /model: event_disc.yaml
+  - override /callbacks: default.yaml
+  - override /trainer: gpu.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+task_name: herwigEventDisc
+tags: ["herwig", "Events"]
+
+logger:
+  wandb:
+    project: "herwigEventsDisc"
+    tags: ["herwig", "Events"]
+    name: herwig_vs_herwigVar
+
+seed: 12345
+
+trainer:
+  max_epochs: 200
+  log_every_n_steps: 1
+
+callbacks:
+  model_checkpoint:
+    monitor: "val/loss"
+    mode: "min"
+    save_top_k: 1
+    save_last: True
+  
+# ## override /datamodule:
+datamodule:
+  batch_size: 10000
+  num_workers: 8
+  pin_memory: True
+  train_val_test_split: [200000, 30000, 30000]
+
+
+# ## override /model:
+model:
+  noise_dim: 10
+  generator:
+    hidden_dims: [256, 256]
+
+  discriminator:
+    _target_: hadml.models.components.deep_set.DeepSetModule
+
+  optimizer_generator:
+    lr: 0.000001
+
+  optimizer_discriminator:
+    lr: 0.0001
+
+  num_critics: 1
+  num_gen: 1
+
+cond_dataset:
+  raw_file_list:
+    - "ClusterTo2Pi0_nominal.dat"
+  processed_file_name: "herwig_graph_cond_data.pt"
+
+obs_dataset:
+  raw_file_list:
+    - "ClusterTo2Pi0_variation.dat"
+  processed_file_name: "herwig_graph_obs_data_variation.pt"
