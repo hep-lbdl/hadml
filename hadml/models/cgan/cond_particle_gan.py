@@ -51,7 +51,7 @@ class CondParticleGANModule(LightningModule):
         loss_type: str = "bce",
         wasserstein_reg: float = 0.0,
         r1_reg: float = 0.0,
-        gumbel_temp: float = 0.2,
+        target_gumbel_temp: float = 0.3,
         comparison_fn: Optional[Callable] = None,
         save_only_improved_plots: bool = False,
     ):
@@ -65,13 +65,15 @@ class CondParticleGANModule(LightningModule):
         self.embedding_module = embedding_module
         self.generator = generator
         self.discriminator = discriminator
+
         self.comparison_fn = comparison_fn
 
         # loss function
         self.criterion = torch.nn.BCELoss()
         self.wasserstein_reg = wasserstein_reg
         self.r1_reg = r1_reg
-        self.gumbel_temp = gumbel_temp
+        self.current_gumbel_temp = 1.0
+        self.target_gumbel_temp = target_gumbel_temp
 
         # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
@@ -221,6 +223,8 @@ class CondParticleGANModule(LightningModule):
         return loss_disc
 
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
+        self._update_gumbel_temp()
+
         cond_info, x_momenta, x_type_indices = batch
         x_type_data = x_type_indices
         if self.embedding_module is not None:
@@ -241,6 +245,11 @@ class CondParticleGANModule(LightningModule):
         if optimizer_idx == 1:
             return self._generator_step(particle_type_data, x_generated)
 
+    def _update_gumbel_temp(self):
+        progress = self.trainer.current_epoch / (self.trainer.max_epochs - 1)
+        self.current_gumbel_temp = 1.0 - (1 - self.target_gumbel_temp) * progress
+        self.log("gumbel", self.current_gumbel_temp)
+
     def _prepare_fake_batch(
         self, cond_info: Optional[torch.Tensor], num_evts: int, device: torch.device
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -248,10 +257,11 @@ class CondParticleGANModule(LightningModule):
 
         particle_kinematics, particle_types = self(noise, cond_info)
         if self.embedding_module is None:
-            particle_type_data = torch.argmax(particle_types, dim=1)
-            particle_type_data = particle_type_data.reshape(num_evts, -1)
+            raise NotImplementedError("Embedding module must be specified.")
         else:
-            particle_type_data = F.gumbel_softmax(particle_types, self.gumbel_temp)
+            particle_types = particle_types.view(-1, self.hparams.num_particle_ids)
+            particle_type_data = F.gumbel_softmax(particle_types,
+                                                  self.current_gumbel_temp)
             particle_type_data = particle_type_data.reshape(
                 particle_kinematics.shape[0], -1
             )

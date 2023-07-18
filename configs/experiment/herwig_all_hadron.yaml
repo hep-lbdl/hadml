@@ -41,6 +41,7 @@ datamodule:
   core_dataset:
     train_val_test_split: [ 0.999, 0.0005, 0.0005 ]
     frac_data_used: 1.0
+    num_used_hadron_types: 10
 
 
 
@@ -48,8 +49,8 @@ datamodule:
 model:
   noise_dim: 64
   # loss_type: "wasserstein" ## "wasserstein" or "bce" or "ls"
-  loss_type: "wasserstein"
-  wasserstein_reg: 1.0
+  loss_type: "bce"
+  wasserstein_reg: 0.0
 
   ## how often the optimizers will be used.
   num_critics: 5
@@ -57,11 +58,12 @@ model:
 
   generator:
     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
-    hidden_dims: ${gen_list:256,10} # = [256]*10
+    hidden_dims: ${gen_list:256,2} # = [256, 256]
 
   discriminator:
-    hidden_dims: ${gen_list:128,8} # = [128, 128, 128, 128, 128, 128, 128, 128]
+    hidden_dims: ${gen_list:256,2} # = [256, 256]
     dropout: 0
+    input_dim: 30
   
   
   # criterion:
