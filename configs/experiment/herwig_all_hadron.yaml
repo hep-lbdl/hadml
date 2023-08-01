@@ -54,7 +54,7 @@ model:
   r1_reg: 200.0
 
   ## how often the optimizers will be used.
-  num_critics: 5
+  num_critics: 1
   num_gen: 1
 
   generator:
@@ -64,7 +64,7 @@ model:
   discriminator:
     hidden_dims: ${gen_list:1000,4} # = [256, 256]
     dropout: 0
-    input_dim: 30
+#    input_dim: 30
   
   
   # criterion:
