@@ -1,3 +1,4 @@
+import math
 import os
 from typing import List, Tuple, Optional, Any, Dict
 
@@ -9,13 +10,11 @@ import matplotlib.pyplot as plt
 
 from .image_converter import fig_to_array
 
-
-def create_plots(nrows, ncols, flatten=True):
+def create_plots(nrows, ncols):
     fig, axs = plt.subplots(
         nrows, ncols, figsize=(4 * ncols, 4 * nrows), constrained_layout=False
     )
-    if flatten:
-        axs = axs.flatten()
+    axs = axs.flatten()
     return fig, axs
 
 
@@ -53,8 +52,10 @@ class CompareParticles(HyperparametersMixin):
         else:
             outname = None
 
-        plot_side_count = int((1 + self.hparams.num_particle_ids) ** 0.5 + 0.999)
-        fig, axs = create_plots(plot_side_count * self.hparams.num_kinematics, plot_side_count, flatten=False)
+        needed_plot_count = self.hparams.num_kinematics * (1 + self.hparams.num_particle_ids)
+        plot_row_count = math.ceil(needed_plot_count ** 0.5)
+        plot_col_count = math.ceil(needed_plot_count / plot_row_count)
+        fig, axs = create_plots(plot_row_count, plot_col_count)
         axs = axs.reshape(-1, 2)
         self._plot_kinematics(predictions, truths, xbins, xlabels, xranges, fig, axs[0, :])
 
@@ -70,6 +71,7 @@ class CompareParticles(HyperparametersMixin):
         if outname is not None:
             plt.savefig(outname + "-angles.png")
             plt.savefig(outname + "-angles.pdf")
+
         # convert the image to a numpy array
         out_images[f"[{i}] particle kinematics"] = fig_to_array(fig)
         plt.close("all")
