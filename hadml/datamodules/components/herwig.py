@@ -165,7 +165,7 @@ class Herwig(LightningDataModule):
 
         q_phi, q_theta = get_angles(new_inputs[:, 4:8])
         q_momenta = np.stack([q_phi, q_theta], axis=1)
-        cond_info = np.concatenate([org_inputs[:, :4], q_momenta], axis=1) #.astype(np.float32)
+        cond_info = np.concatenate([org_inputs[:, :4], q_momenta], axis=1)
         cond_info_prescaler = MinMaxScaler((-1, 1))
         cond_info = cond_info_prescaler.fit_transform(cond_info)
         cond_info = torch.from_numpy(cond_info.astype(np.float32))
@@ -186,7 +186,7 @@ class Herwig(LightningDataModule):
             used_idx = used_idx.sum(axis=1).eq(used_idx.shape[1])
             print(f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used.")
             dataset = tuple(table[used_idx] for table in dataset)
-       
+
         self.summarize()
         return dataset
 
