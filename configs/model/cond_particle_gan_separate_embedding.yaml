@@ -1,6 +1,6 @@
 _target_: hadml.models.cgan.cond_particle_gan.CondParticleGANModule
 noise_dim: 128
-cond_info_dim: 8
+cond_info_dim: 6
 num_particle_ids: 10
 num_output_particles: 2
 num_particle_kinematics: 2

@@ -8,6 +8,9 @@ import math
 import numpy as np
 import pandas as pd
 
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+
 import torch
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.core.mixins import HyperparametersMixin
@@ -33,7 +36,7 @@ class Herwig(LightningDataModule):
     def __init__(
         self,
         data_dir: str = "data/",
-        fname: str = "allHadrons_10M_mode4_with_quark_with_pert.npz",
+        fname: str = "allHadrons_with_quark.dat",
         origin_fname: str = "cluster_ML_allHadrons_10M.txt",
         train_val_test_split: Tuple[float, float, float] = (0.5, 0.25, 0.25),
         frac_data_used: Optional[float] = 1.0,
@@ -104,44 +107,86 @@ class Herwig(LightningDataModule):
             x_truth:   target truth information with conditonal information
         """
         fname = os.path.join(self.hparams.data_dir, self.hparams.fname)
-        arrays = np.load(fname)
+        clusters = []
+        with open(fname) as f:
+            for i, event_line in enumerate(f):
+                items = event_line.split("|")[:-1]
+                clusters += [c.split(";")[:-1] for c in items]
 
-        cond_info = torch.from_numpy(arrays["cond_info"].astype(np.float32))
-        truth_in = torch.from_numpy(arrays["out_truth"].astype(np.float32))
+        df = pd.DataFrame(clusters)
 
-        num_tot_evts, self.cond_dim = cond_info.shape
+        q1, q2, c, h1, h2 = [split_to_float(df[idx]) for idx in range(5)]
+
+        cluster = c[[1, 2, 3, 4]].values
+
+        h1_types = h1[[0]].to_numpy()
+        h2_types = h2[[0]].to_numpy()
+        h1 = h1[[1, 2, 3, 4]].to_numpy()
+        h2 = h2[[1, 2, 3, 4]].to_numpy()
+
+        q1_types = q1[[0]].to_numpy()
+        q2_types = q2[[0]].to_numpy()
+        q1 = q1[[1, 2, 3, 4]].to_numpy()
+        q2 = q2[[1, 2, 3, 4]].to_numpy()
+
+        org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
+        org_inputs = org_inputs[q1_types[:, 0] != 88]
+        h1_types = h1_types[q1_types[:, 0] != 88]
+        h2_types = h2_types[q1_types[:, 0] != 88]
+        mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys())))
+        org_inputs = org_inputs[mask]
+        h1_types = h1_types[mask]
+        h2_types = h2_types[mask]
+
+        num_tot_evts = len(org_inputs)
         num_asked_events = get_num_asked_events(
             self.hparams.examples_used, self.hparams.frac_data_used, num_tot_evts
         )
+        org_inputs = org_inputs[:num_asked_events]
 
-        cond_info = cond_info[:num_asked_events]
-        truth_in = truth_in[:num_asked_events]
+        new_inputs = boost(org_inputs)
 
-        # output includes N hadron types and their momenta
-        # output dimension only includes the momenta
-        self.output_dim = truth_in.shape[1] - self.hparams.num_output_hadrons
+        def get_angles(four_vector):
+            _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
+            pT = np.sqrt(px**2 + py**2)
+            phi = np.arctan(px / py)
+            theta = np.arctan(pT / pz)
+            return phi, theta
 
-        true_hadron_momenta = truth_in[:, : -self.hparams.num_output_hadrons]
-        true_hadron_momenta += 1
-        true_hadron_momenta[true_hadron_momenta > 1] = true_hadron_momenta[true_hadron_momenta > 1] - 2
+        phi, theta = get_angles(new_inputs[:, -4:])
+        theta = theta + math.pi * (theta < 0)
+
+        true_hadron_angles = np.stack([phi, theta], axis=1)
+        hadron_angles_prescaler = MinMaxScaler((-1, 1))
+        true_hadron_angles = hadron_angles_prescaler.fit_transform(true_hadron_angles)
+        true_hadron_angles = torch.from_numpy(true_hadron_angles.astype(np.float32))
+
+        true_hadron_momenta = torch.from_numpy(org_inputs[:, -8:])
+
+        q_phi, q_theta = get_angles(new_inputs[:, 4:8])
+        q_momenta = np.stack([q_phi, q_theta], axis=1)
+        cond_info = np.concatenate([org_inputs[:, :4], q_momenta], axis=1) #.astype(np.float32)
+        cond_info_prescaler = MinMaxScaler((-1, 1))
+        cond_info = cond_info_prescaler.fit_transform(cond_info)
+        cond_info = torch.from_numpy(cond_info.astype(np.float32))
 
         # convert particle IDs to indices
         # then these indices can be embedded in N dim. space
-        target_hadron_types = (
-            truth_in[:, -self.hparams.num_output_hadrons :].reshape(-1).numpy()
-        )
-        target_hadron_types_idx = torch.from_numpy(
-            np.vectorize(self.pids_to_ix.get)(target_hadron_types.astype(np.int16))
-        ).reshape(-1, self.hparams.num_output_hadrons)
+        h1_type_indices = np.vectorize(self.pids_to_ix.get)(h1_types.astype(np.int16))
+        h2_type_indices = np.vectorize(self.pids_to_ix.get)(h2_types.astype(np.int16))
+        target_hadron_types_idx = torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1))
 
-        dataset = (cond_info, true_hadron_momenta, target_hadron_types_idx)
+        joblib.dump(cond_info_prescaler, f'{self.hparams.data_dir}/cond_info_prescaler.gz')
+        joblib.dump(hadron_angles_prescaler, f'{self.hparams.data_dir}/hadron_angles_prescaler.gz')
+
+        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx)#, true_hadron_momenta)
 
         if self.hparams.num_used_hadron_types is not None:
             used_idx = target_hadron_types_idx < self.hparams.num_used_hadron_types
             used_idx = used_idx.sum(axis=1).eq(used_idx.shape[1])
             print(f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used.")
             dataset = tuple(table[used_idx] for table in dataset)
-
+       
         self.summarize()
         return dataset
 
