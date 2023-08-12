@@ -59,10 +59,10 @@ model:
 
   generator:
     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
-    hidden_dims: ${gen_list:1000,4} # = [256, 256]
+    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
 
   discriminator:
-    hidden_dims: ${gen_list:1000,4} # = [256, 256]
+    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
     dropout: 0
 #    input_dim: 30
   
