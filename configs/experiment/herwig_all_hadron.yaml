@@ -25,7 +25,7 @@ tags: ["herwig", "allhadrons"]
 seed: 12345
 
 trainer:
-  max_epochs: 3
+  max_epochs: 15
   val_check_interval: 0.5
 
 callbacks:
@@ -36,12 +36,12 @@ callbacks:
   
 ## override /datamodule:
 datamodule:
-  batch_size: 5_000
+  batch_size: 40_000
   pin_memory: True
   core_dataset:
-    train_val_test_split: [ 0.999, 0.0005, 0.0005 ]
+    train_val_test_split: [ 0.997, 0.0005, 0.0025 ]
     frac_data_used: 1.0
-    num_used_hadron_types: 10
+    num_used_hadron_types: 40
 
 
 
@@ -51,19 +51,20 @@ model:
   # loss_type: "wasserstein" ## "wasserstein" or "bce" or "ls"
   loss_type: "bce"
   wasserstein_reg: 0.0
+  r1_reg: 200.0
 
   ## how often the optimizers will be used.
-  num_critics: 5
+  num_critics: 1
   num_gen: 1
 
   generator:
     input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
-    hidden_dims: ${gen_list:256,2} # = [256, 256]
+    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
 
   discriminator:
-    hidden_dims: ${gen_list:256,2} # = [256, 256]
+    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
     dropout: 0
-    input_dim: 30
+#    input_dim: 30
   
   
   # criterion:

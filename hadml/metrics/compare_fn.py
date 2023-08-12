@@ -1,3 +1,4 @@
+import math
 import os
 from typing import List, Tuple, Optional, Any, Dict
 
@@ -8,7 +9,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from .image_converter import fig_to_array
-
 
 def create_plots(nrows, ncols):
     fig, axs = plt.subplots(
@@ -52,34 +52,31 @@ class CompareParticles(HyperparametersMixin):
         else:
             outname = None
 
-        fig, axs = create_plots(1, self.hparams.num_kinematics)
-        config = dict(alpha=0.5, lw=2, density=True)
-        for idx in range(self.hparams.num_kinematics):
-            xrange = xranges[idx] if xranges else (-1, 1)
-            xbin = xbins[idx] if xbins else 40
+        needed_plot_count = self.hparams.num_kinematics * (1 + self.hparams.num_particle_ids)
+        plot_row_count = math.ceil(needed_plot_count ** 0.5)
+        plot_col_count = math.ceil(needed_plot_count / plot_row_count)
+        fig, axs = create_plots(plot_row_count, plot_col_count)
+        axs = axs.reshape(-1, 2)
+        self._plot_kinematics(predictions, truths, xbins, xlabels, xranges, fig, axs[0, :])
 
-            ax = axs[idx]
-            bin_heights, _, _ = ax.hist(
-                truths[:, idx], bins=xbin, range=xrange, label="Truth", **config
-            )
-            max_y = np.max(bin_heights) * 1.1
-            ax.hist(
-                predictions[:, idx],
-                bins=xbin,
-                range=xrange,
-                label="Generator",
-                **config,
-            )
-            ax.set_xlabel(r"{}".format(xlabels[idx]))
-            ax.set_ylim(0, max_y)
-            ax.legend()
+        for i in range(self.hparams.num_particle_ids):
+            sim_particle_types = (predictions[:, self.hparams.num_kinematics:] == i).sum(-1) > 0
+            true_particle_types = (truths[:, self.hparams.num_kinematics:] == i).sum(-1) > 0
+            predictions_i = predictions[sim_particle_types]
+            truths_i = truths[true_particle_types]
+            xlabels_i = [l + f" [pid={i}]" for l in xlabels]
+            self._plot_kinematics(predictions_i, truths_i, xbins,
+                                  xlabels_i, xranges, fig, axs[1 + i, :])
 
         if outname is not None:
             plt.savefig(outname + "-angles.png")
             plt.savefig(outname + "-angles.pdf")
+
         # convert the image to a numpy array
-        out_images["particle kinematics"] = fig_to_array(fig)
+        out_images[f"[{i}] particle kinematics"] = fig_to_array(fig)
         plt.close("all")
+
+        config = dict(alpha=0.5, lw=2, density=True)
 
         # figure out predicted particle type
         num_particles = self.hparams.num_particles
@@ -123,6 +120,29 @@ class CompareParticles(HyperparametersMixin):
             plt.close("all")
 
         return out_images
+
+    def _plot_kinematics(self, predictions, truths, xbins, xlabels, xranges, fig, axs):
+        config = dict(alpha=0.5, lw=2, density=True)
+        for idx in range(self.hparams.num_kinematics):
+            xrange = xranges[idx] if xranges else (-1, 1)
+            xbin = xbins[idx] if xbins else 40
+
+            ax = axs[idx]
+            bin_heights, _, _ = ax.hist(
+                truths[:, idx], bins=xbin, range=xrange, label="Truth", **config
+            )
+            max_y = np.max(bin_heights) * 1.1
+            ax.hist(
+                predictions[:, idx],
+                bins=xbin,
+                range=xrange,
+                label="Generator",
+                **config,
+            )
+            ax.set_xlabel(r"{}".format(xlabels[idx]))
+            ax.set_ylim(0, max_y)
+            ax.legend()
+
 
     @staticmethod
     def set_hist_log_scale(ax, patches, bin_heights):
