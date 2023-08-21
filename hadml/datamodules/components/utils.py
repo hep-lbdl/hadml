@@ -68,7 +68,8 @@ def create_boost_fn(cluster_4vec: np.ndarray):
 
     velocity = p0 / gamma.reshape(-1, 1) / mass.reshape(-1, 1)
     v_mag = np.sqrt((velocity**2).sum(axis=1))
-    n = velocity / v_mag.reshape(-1, 1)
+    n = (velocity / v_mag.reshape(-1, 1))
+    n[np.isnan(n)] = 0
 
     def boost_fn(lab_4vec: np.ndarray):
         """4vector [E, px, py, pz] in lab frame"""
@@ -81,12 +82,12 @@ def create_boost_fn(cluster_4vec: np.ndarray):
 
     def inv_boost_fn(boost_4vec: np.ndarray):
         """4vecot [E, px, py, pz] in boost frame (aka cluster frame)"""
-        E_prime = boost_4vec[0]
-        P_prime = boost_4vec[1:]
-        n_dot_p = np.sum((n * P_prime))
+        E_prime = boost_4vec[:, 0]
+        P_prime = boost_4vec[:, 1:]
+        n_dot_p = np.sum((n * P_prime), axis=1)
         E = gamma * (E_prime + v_mag * n_dot_p)
-        p = P_prime + (gamma - 1) * n_dot_p * n + gamma * E_prime * v_mag * n
-        return np.array([E] + p.tolist())
+        P = P_prime + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n + (gamma * E_prime * v_mag).reshape(-1, 1) * n
+        return np.concatenate([E.reshape(-1, 1), P], axis=1)
 
     return boost_fn, inv_boost_fn
 
@@ -97,18 +98,18 @@ def boost(a_row: np.ndarray):
     assert a_row.shape[1] % 4 == 0, "a_row should be a 4-vector"
     boost_fn, _ = create_boost_fn(a_row[:, :4])
     n_particles = (a_row.shape[1]) // 4
-    results = [boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(n_particles)]
-    return np.concatenate(results, axis=1)
+    results = [boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)]
+    return np.concatenate(a_row[:, :4] + results, axis=1)
 
 
 def inv_boost(a_row: np.ndarray):
     """boost all particles to the rest frame of the first particle in the list"""
 
     assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
-    _, inv_boost_fn = create_boost_fn(a_row[:4])
-    n_particles = len(a_row) // 4
-    results = [inv_boost_fn(a_row[4 * x : 4 * (x + 1)]) for x in range(n_particles)]
-    return list(itertools.chain(*[x.tolist() for x in results]))
+    _, inv_boost_fn = create_boost_fn(a_row[:, :4])
+    n_particles = (a_row.shape[1]) // 4
+    results = [inv_boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)]
+    return np.concatenate(a_row[:, :4] + results, axis=1)
 
 
 # <TODO> Use different scaler methods

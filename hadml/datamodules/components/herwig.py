@@ -8,9 +8,6 @@ import math
 import numpy as np
 import pandas as pd
 
-from sklearn.preprocessing import MinMaxScaler
-import joblib
-
 import torch
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.core.mixins import HyperparametersMixin
@@ -108,16 +105,22 @@ class Herwig(LightningDataModule):
         """
         fname = os.path.join(self.hparams.data_dir, self.hparams.fname)
         clusters = []
+        event_labels = []
         with open(fname) as f:
             for i, event_line in enumerate(f):
+                if i % 100000 == 0:
+                    print(i)
                 items = event_line.split("|")[:-1]
                 clusters += [c.split(";")[:-1] for c in items]
+                event_labels += [i] * len(items)
+                if i == 5000000: # temp solution to limit the data size
+                    break
 
         df = pd.DataFrame(clusters)
 
         q1, q2, c, h1, h2 = [split_to_float(df[idx]) for idx in range(5)]
 
-        cluster = c[[1, 2, 3, 4]].values
+        cluster = c[[1, 2, 3, 4]].to_numpy()
 
         h1_types = h1[[0]].to_numpy()
         h2_types = h2[[0]].to_numpy()
@@ -129,11 +132,17 @@ class Herwig(LightningDataModule):
         q1 = q1[[1, 2, 3, 4]].to_numpy()
         q2 = q2[[1, 2, 3, 4]].to_numpy()
 
+        event_labels = np.array(event_labels)
+
         org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
+        event_labels = event_labels[q1_types[:, 0] != 88]
         org_inputs = org_inputs[q1_types[:, 0] != 88]
         h1_types = h1_types[q1_types[:, 0] != 88]
         h2_types = h2_types[q1_types[:, 0] != 88]
+        q2_types = q2_types[q1_types[:, 0] != 88]
+        q1_types = q1_types[q1_types[:, 0] != 88]
         mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys())))
+        event_labels = event_labels[mask]
         org_inputs = org_inputs[mask]
         h1_types = h1_types[mask]
         h2_types = h2_types[mask]
@@ -151,23 +160,24 @@ class Herwig(LightningDataModule):
             pT = np.sqrt(px**2 + py**2)
             phi = np.arctan(px / py)
             theta = np.arctan(pT / pz)
+            # phi = np.sign(px) * np.arcsin(py / pT) + (1 - np.sign(px)) * np.sign(py) * np.pi / 2
+            # theta = np.arcsin(pT / np.sqrt(pz**2 + pT**2))
             return phi, theta
 
         phi, theta = get_angles(new_inputs[:, -4:])
         theta = theta + math.pi * (theta < 0)
 
         true_hadron_angles = np.stack([phi, theta], axis=1)
-        hadron_angles_prescaler = MinMaxScaler((-1, 1))
-        true_hadron_angles = hadron_angles_prescaler.fit_transform(true_hadron_angles)
+        # hadron_angles_prescaler = MinMaxScaler((-1, 1))
+        # true_hadron_angles = hadron_angles_prescaler.fit_transform(true_hadron_angles)
         true_hadron_angles = torch.from_numpy(true_hadron_angles.astype(np.float32))
-
         true_hadron_momenta = torch.from_numpy(org_inputs[:, -8:])
 
         q_phi, q_theta = get_angles(new_inputs[:, 4:8])
         q_momenta = np.stack([q_phi, q_theta], axis=1)
         cond_info = np.concatenate([org_inputs[:, :4], q_momenta], axis=1)
-        cond_info_prescaler = MinMaxScaler((-1, 1))
-        cond_info = cond_info_prescaler.fit_transform(cond_info)
+        # cond_info_prescaler = MinMaxScaler((-1, 1))
+        # cond_info = cond_info_prescaler.fit_transform(cond_info)
         cond_info = torch.from_numpy(cond_info.astype(np.float32))
 
         # convert particle IDs to indices
@@ -176,17 +186,17 @@ class Herwig(LightningDataModule):
         h2_type_indices = np.vectorize(self.pids_to_ix.get)(h2_types.astype(np.int16))
         target_hadron_types_idx = torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1))
 
-        joblib.dump(cond_info_prescaler, f'{self.hparams.data_dir}/cond_info_prescaler.gz')
-        joblib.dump(hadron_angles_prescaler, f'{self.hparams.data_dir}/hadron_angles_prescaler.gz')
+        # joblib.dump(cond_info_prescaler, f'{self.hparams.data_dir}/cond_info_prescaler.gz')
+        # joblib.dump(hadron_angles_prescaler, f'{self.hparams.data_dir}/hadron_angles_prescaler.gz')
 
-        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx)#, true_hadron_momenta)
+        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx, true_hadron_momenta, torch.from_numpy(event_labels))
 
         if self.hparams.num_used_hadron_types is not None:
             used_idx = target_hadron_types_idx < self.hparams.num_used_hadron_types
             used_idx = used_idx.sum(axis=1).eq(used_idx.shape[1])
             print(f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used.")
             dataset = tuple(table[used_idx] for table in dataset)
-
+        
         self.summarize()
         return dataset
 
@@ -311,7 +321,7 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
         else:
             org_inputs = np.concatenate([cluster, h1, h2], axis=1)
 
-        new_inputs = np.array([boost(row) for row in org_inputs])
+        new_inputs = boost(org_inputs)
 
         def get_angles(four_vector):
             _, px, py, pz = [four_vector[:, idx] for idx in range(4)]

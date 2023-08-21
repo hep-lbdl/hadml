@@ -7,8 +7,10 @@ from pytorch_lightning import LightningModule
 from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
 import ot
+import os
 
 from hadml.metrics.media_logger import log_images
+from hadml.models.components.transform import InvsBoost
 from hadml.utils.utils import (
     get_wasserstein_grad_penalty,
     conditional_cat,
@@ -43,6 +45,9 @@ class CondParticleGANModule(LightningModule):
         discriminator: torch.nn.Module,
         optimizer_generator: Optimizer,
         optimizer_discriminator: Optimizer,
+        generator_prescale: torch.nn.Module,
+        generator_postscale: torch.nn.Module,
+        discriminator_prescale: torch.nn.Module,
         num_critics: int,
         num_gen: int,
         embedding_module: Optional[torch.nn.Module] = None,
@@ -54,17 +59,29 @@ class CondParticleGANModule(LightningModule):
         target_gumbel_temp: float = 0.3,
         comparison_fn: Optional[Callable] = None,
         save_only_improved_plots: bool = False,
+        outdir: Optional[str] = None,
     ):
         super().__init__()
 
         self.save_hyperparameters(
             logger=False,
-            ignore=["generator", "discriminator", "comparison_fn", "criterion"],
+            ignore=[
+                "generator",
+                "discriminator",
+                "generator_prescale",
+                "generator_postscale",
+                "discriminator_prescale",
+                "comparison_fn",
+                "criterion",
+            ],
         )
 
         self.embedding_module = embedding_module
         self.generator = generator
         self.discriminator = discriminator
+        self.generator_prescale = generator_prescale
+        self.generator_postscale = generator_postscale
+        self.discriminator_prescale = discriminator_prescale
 
         self.comparison_fn = comparison_fn
 
@@ -107,6 +124,7 @@ class CondParticleGANModule(LightningModule):
     def forward(
         self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         if self.use_particle_mlp:
             particle_kinematics, particle_types = self._call_mlp_particle_generator(x_fake)
@@ -225,7 +243,7 @@ class CondParticleGANModule(LightningModule):
     def training_step(self, batch: Any, batch_idx: int, optimizer_idx: int):
         self._update_gumbel_temp()
 
-        cond_info, x_momenta, x_type_indices = batch
+        cond_info, x_momenta, x_type_indices, _, _ = batch
         x_type_data = x_type_indices
         if self.embedding_module is not None:
             x_type_data = self.embedding_module(x_type_data)
@@ -272,6 +290,7 @@ class CondParticleGANModule(LightningModule):
     def _generator_step(
         self, particle_type_data: torch.Tensor, x_generated: torch.Tensor
     ):
+        # x_generated = self.discriminator_prescale(x_generated)
         score_fakes = self.discriminator(x_generated, particle_type_data).squeeze(-1)
         loss_gen = self._generator_loss(score_fakes)
 
@@ -289,10 +308,12 @@ class CondParticleGANModule(LightningModule):
         x_type_data: torch.Tensor,
     ):
         # with real batch
+        x_momenta = self.discriminator_prescale(x_momenta)
         x_truth = conditional_cat(cond_info, x_momenta, dim=1)
 
         score_truth = self.discriminator(x_truth, x_type_data).squeeze(-1)
         # with fake batch
+        # x_generated = self.discriminator_prescale(x_generated)
         score_fakes = self.discriminator(
             x_generated.detach(), particle_type_data.detach()
         ).squeeze(-1)
@@ -347,13 +368,14 @@ class CondParticleGANModule(LightningModule):
     def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
         """Common steps for valiation and testing"""
 
-        cond_info, x_momenta, x_type_indices = batch
-        num_evts, _ = x_momenta.shape
+        cond_info, x_angles, x_type_indices, x_momenta, event_labels = batch
+        num_evts, _ = x_angles.shape
         # generate events from the Generator
-        noise = self.generate_noise(num_evts).to(x_momenta.device)
-        particle_kinematics, particle_types = self(noise, cond_info)
+        noise = self.generate_noise(num_evts).to(x_angles.device)
+        particle_angles, particle_types = self(noise, cond_info)
         particle_type_idx = torch.argmax(particle_types, dim=1).reshape(num_evts, -1)
         particle_types = particle_types.reshape(num_evts, -1)
+        scaled_x_angles = self.discriminator_prescale(x_angles)
 
         output_particles = []
         if x_type_indices is not None:
@@ -376,40 +398,45 @@ class CondParticleGANModule(LightningModule):
             fake_output_particles, true_output_particles, n_projections=1000
         )
 
-        predictions = (
-            torch.cat([particle_kinematics, particle_type_idx], dim=1)
-            .cpu()
-            .detach()
-            .numpy()
-        )
-        truths = torch.cat([x_momenta, x_type_indices], dim=1).cpu().detach().numpy()
-
         kinematic_swd = ot.sliced_wasserstein_distance(
-            particle_kinematics.detach().cpu().numpy(),
-            x_momenta.detach().cpu().numpy(),
+            particle_angles.detach().cpu().numpy(),
+            scaled_x_angles.detach().cpu().numpy(),
             n_projections=100,
         )
 
         swd = ot.sliced_wasserstein_distance(
             np.concatenate(
-                [particle_kinematics.detach().cpu().numpy(), fake_output_particles],
+                [particle_angles.detach().cpu().numpy(), fake_output_particles],
                 axis=1,
             ),
             np.concatenate(
-                [x_momenta.detach().cpu().numpy(), true_output_particles], axis=1
+                [scaled_x_angles.detach().cpu().numpy(), true_output_particles], axis=1
             ),
             n_projections=100,
         )
+
+        particle_angles = self.generator_postscale(particle_angles)
+        particle_momenta = InvsBoost(cond_info[:, :4], particle_angles).reshape((-1, 4))
+        predictions = (
+            torch.cat([particle_angles, particle_type_idx], dim=1)
+            .cpu()
+            .detach()
+            .numpy()
+        )
+        truths = torch.cat([x_angles, x_type_indices], dim=1).cpu().detach().numpy()
 
         return {
             "swd": swd,
             "particle_swd": particle_swd,
             "kinematic_swd": kinematic_swd,
-            "preds": predictions,
+            "predictions": predictions,
             "truths": truths,
+            "particle_momenta": particle_momenta.cpu().detach().numpy(),
+            "x_momenta": x_momenta.reshape((-1, 4)).cpu().detach().numpy(),
+            "event_labels": event_labels.cpu().detach().numpy()
         }
 
-    def compare(self, predictions, truths, outname) -> None:
+    def compare(self, predictions, truths, x_momenta, particle_momenta, outname) -> None:
         """Compare the generated events with the real ones
         Parameters:
             perf: dictionary from the step function
@@ -428,14 +455,17 @@ class CondParticleGANModule(LightningModule):
     def validation_step(self, batch: Any, batch_idx: int):
         """Validation step"""
         perf = self.step(batch, batch_idx)
-        swd_distance = perf["swd"]
-        particle_swd = perf["particle_swd"]
-        kinematic_swd = perf["kinematic_swd"]
+        self.val_swd(perf["swd"])
+        self.val_particle_swd(perf["particle_swd"])
+        self.val_kinematic_swd(perf["kinematic_swd"])
 
-        # update and log metrics
-        self.val_swd(swd_distance)
-        self.val_kinematic_swd(kinematic_swd)
-        self.val_particle_swd(particle_swd)
+        return perf
+
+    def validation_epoch_end(self, outputs: List[Any]):
+    
+        swd_distance = self.val_swd.compute()
+        particle_swd = self.val_particle_swd.compute()
+        kinematic_swd = self.val_kinematic_swd.compute()
 
         self.val_min_avg_swd(swd_distance)
         self.val_min_avg_particle_swd(particle_swd)
@@ -464,46 +494,91 @@ class CondParticleGANModule(LightningModule):
             prog_bar=True,
         )
 
+        self.val_swd.reset()
+        self.val_particle_swd.reset()
+        self.val_kinematic_swd.reset()
+
         if (
             not self.hparams.save_only_improved_plots
             or swd_distance <= self.val_min_avg_swd.compute()
             or kinematic_swd <= self.val_kinematic_swd.compute()
             or particle_swd <= self.val_particle_swd.compute()
         ):
-            outname = f"val-{self.current_epoch:02d}-{batch_idx:02d}"
-            predictions = perf["preds"]
-            truths = perf["truths"]
-            self.compare(predictions, truths, outname)
+            
+            predictions = []
+            truths = []
+            particle_momenta = []
+            x_momenta = []
+            event_labels = []
+            for perf in outputs:
+                predictions = (
+                    perf["predictions"]
+                    if len(predictions) == 0
+                    else np.concatenate((predictions, perf["predictions"]))
+                )
+                truths = (
+                    perf["truths"]
+                    if len(truths) == 0
+                    else np.concatenate((truths, perf["truths"]))
+                )
+                particle_momenta = (
+                    perf["particle_momenta"]
+                    if len(particle_momenta) == 0
+                    else np.concatenate((particle_momenta, perf["particle_momenta"]))
+                )
+                x_momenta = (
+                    perf["x_momenta"]
+                    if len(x_momenta) == 0
+                    else np.concatenate((x_momenta, perf["x_momenta"]))
+                )
+                event_labels = (
+                    perf["event_labels"]
+                    if len(event_labels) == 0
+                    else np.concatenate((event_labels, perf["event_labels"]))
+                )
 
-        return perf, batch_idx
+            outname = f"val-{self.current_epoch:02d}"
 
-    def validaton_epoch_end(self, outputs: List[Any]):
-        # `outputs` is a list of dicts returned from `validation_step()`
-        # Need it in multiple GPUs training.
-        pass
+            # print(truths)
+            # print(predictions)
+
+            self.compare(predictions, truths, x_momenta, particle_momenta, outname)
+
+        if self.current_epoch == 0:
+            os.makedirs(self.hparams.outdir, exist_ok=True)
+            np.savez_compressed(os.path.join(self.hparams.outdir, "initial.npz"),
+                                predictions=predictions,
+                                truths=truths,
+                                x_momenta=x_momenta,
+                                particle_momenta=particle_momenta,
+                                event_labels=event_labels)
+        if self.current_epoch == self.trainer.max_epochs - 1:
+            os.makedirs(self.hparams.outdir, exist_ok=True)
+            np.savez_compressed(os.path.join(self.hparams.outdir, "final.npz"),
+                                predictions=predictions,
+                                truths=truths,
+                                x_momenta=x_momenta,
+                                particle_momenta=particle_momenta,
+                                event_labels=event_labels)
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
         perf = self.step(batch, batch_idx)
-        swd_distance = perf["swd"]
-        particle_swd = perf["particle_swd"]
-        kinematic_swd = perf["kinematic_swd"]
+        self.test_swd(perf["swd"])
+        self.test_particle_swd(perf["particle_swd"])
+        self.test_kinematic_swd(perf["kinematic_swd"])
 
-        # update and log metrics
-        self.test_swd(swd_distance)
-        self.test_particle_swd(particle_swd)
-        self.test_kinematic_swd(kinematic_swd)
+        return perf
+    
+    def test_epoch_end(self, outputs: List[Any]):
 
-        self.test_swd_best(swd_distance)
-        self.test_particle_swd_best(particle_swd)
-        self.test_kinematic_swd_best(kinematic_swd)
+        swd_distance = self.test_swd.compute()
+        particle_swd = self.test_particle_swd.compute()
+        kinematic_swd = self.test_kinematic_swd.compute()
+
         self.log("test/swd", swd_distance, on_step=False, on_epoch=True, prog_bar=True)
         self.log(
-            "test/particle_swd",
-            particle_swd,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
+            "test/type_swd", particle_swd, on_step=False, on_epoch=True, prog_bar=True
         )
         self.log(
             "test/kinematic_swd",
@@ -512,19 +587,50 @@ class CondParticleGANModule(LightningModule):
             on_epoch=True,
             prog_bar=True,
         )
-        self.log("test/swd_best", self.test_swd_best.compute(), prog_bar=True)
-        self.log("test/wd_best", self.test_kinematic_swd_best.compute(), prog_bar=True)
-        self.log("test/wd_best", self.test_particle_swd_best.compute(), prog_bar=True)
-        # comparison
-        if (
-            not self.hparams.save_only_improved_plots
-            or swd_distance <= self.test_swd_best.compute()
-            or kinematic_swd <= self.test_kinematic_swd_best.compute()
-            or particle_swd <= self.test_particle_swd_best.compute()
-        ):
-            outname = f"test-{self.current_epoch:02d}-{batch_idx:02d}"
-            predictions = perf["preds"]
-            truths = perf["truths"]
-            self.compare(predictions, truths, outname)
 
-        return perf, batch_idx
+        self.test_swd.reset()
+        self.test_particle_swd.reset()
+        self.test_kinematic_swd.reset()
+            
+        predictions = []
+        truths = []
+        particle_momenta = []
+        x_momenta = []
+        event_labels = []
+        for perf in outputs:
+            predictions = (
+                perf["predictions"]
+                if len(predictions) == 0
+                else np.concatenate((predictions, perf["predictions"]))
+            )
+            truths = (
+                perf["truths"]
+                if len(truths) == 0
+                else np.concatenate((truths, perf["truths"]))
+            )
+            particle_momenta = (
+                perf["particle_momenta"]
+                if len(particle_momenta) == 0
+                else np.concatenate((particle_momenta, perf["particle_momenta"]))
+            )
+            x_momenta = (
+                perf["x_momenta"]
+                if len(x_momenta) == 0
+                else np.concatenate((x_momenta, perf["x_momenta"]))
+            )
+            event_labels = (
+                perf["event_labels"]
+                if len(event_labels) == 0
+                else np.concatenate((event_labels, perf["event_labels"]))
+            )
+
+        outname = f"test-{self.current_epoch:02d}"
+        self.compare(predictions, truths, x_momenta, particle_momenta, outname)
+
+        os.makedirs(self.hparams.outdir, exist_ok=True)
+        np.savez_compressed(os.path.join(self.hparams.outdir, "best.npz"),
+                            predictions=predictions,
+                            truths=truths,
+                            x_momenta=x_momenta,
+                            particle_momenta=particle_momenta,
+                            event_labels=event_labels)
