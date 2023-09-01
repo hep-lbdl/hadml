@@ -29,7 +29,7 @@ pip install -r requirements.txt
 # IF not runnin the code in cori, you need to copy data from cori (7.1 GB), sorry for the large size.
 # scp cori.nersc.gov:/global/project/projectdirs/m3246/Herwig7/StartingData/allHadrons_10M_mode4_with_quark_with_pert.npz data/Herwig/
 # IF in cori, create a soft link to the data
-ln -s /global/project/projectdirs/m3246/Herwig7/StartingData/allHadrons_10M_mode4_with_quark_with_pert.npz data/Herwig/
+ln -s /global/cfs/cdirs/m3246/Herwig7/StartingData/allHadrons_10M_mode4_with_quark_with_pert.npz data/Herwig/
 
 # run the training for cluster-level generation
 python hadml/train.py experiment=herwig_all_hadron
