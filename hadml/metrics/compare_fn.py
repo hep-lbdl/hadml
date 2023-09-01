@@ -73,7 +73,7 @@ class CompareParticles(HyperparametersMixin):
             plt.savefig(outname + "-angles.pdf")
 
         # convert the image to a numpy array
-        out_images[f"[{i}] particle kinematics"] = fig_to_array(fig)
+        out_images[f"particle kinematics"] = fig_to_array(fig)
         plt.close("all")
 
         config = dict(alpha=0.5, lw=2, density=True)
@@ -127,6 +127,8 @@ class CompareParticles(HyperparametersMixin):
             xrange = xranges[idx] if xranges else (-1, 1)
             xbin = xbins[idx] if xbins else 40
 
+            if len(truths[:, idx]) == 0:
+                continue
             ax = axs[idx]
             bin_heights, _, _ = ax.hist(
                 truths[:, idx], bins=xbin, range=xrange, label="Truth", **config

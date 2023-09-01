@@ -21,6 +21,8 @@ defaults:
 # this allows you to overwrite only specified parameters
 task_name: "herwigAllhadron"
 tags: ["herwig", "allhadrons"]
+# ckpt_path: /global/cfs/cdirs/m3246/jay/hadml/logs/herwigAllhadron/runs/2023-08-18_17-23-33/lightning-hydra-template/2sq8mqmt/checkpoints/last.ckpt
+# train: False
 
 seed: 12345
 
@@ -30,18 +32,21 @@ trainer:
 
 callbacks:
   model_checkpoint:
-    monitor: "val/min_avg_swd"
+    monitor: val/swd
+    # monitor: "val/min_avg_swd"
     mode: "min"
     save_top_k: 5
+    save_last: True
   
 ## override /datamodule:
 datamodule:
   batch_size: 40_000
   pin_memory: True
   core_dataset:
-    train_val_test_split: [ 0.997, 0.0005, 0.0025 ]
+    train_val_test_split: [ 0.97, 0.005, 0.025 ]
     frac_data_used: 1.0
     num_used_hadron_types: 40
+    fname: allHadrons_with_quark_flavour.dat
 
 
 
@@ -58,13 +63,13 @@ model:
   num_gen: 1
 
   generator:
-    input_dim: 72   # ${model.noise_dim} + ${model.cond_info_dim}
+    input_dim: 70   # ${model.noise_dim} + ${model.cond_info_dim}
     hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
 
   discriminator:
     hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
     dropout: 0
-#    input_dim: 30
+    input_dim: 88
   
   
   # criterion:
