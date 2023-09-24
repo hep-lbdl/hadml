@@ -448,7 +448,10 @@ class HerwigEventDataset(InMemoryDataset):
         all_data = []
         for raw_path in self.raw_paths:
             with open(raw_path) as f:
-                data_list = [self._create_data(line) for line in f]
+                data_list = []
+                for line in f:
+                    evt = self._create_data(line)
+                    if evt is not None: data_list.append(evt)
 
             if self.pre_filter is not None:
                 data_list = [data for data in data_list if self.pre_filter(data)]
@@ -466,6 +469,7 @@ class HerwigEventDataset(InMemoryDataset):
 
         items = line.split("|")[:-1]
         clusters = [c.split(";")[:-1] for c in items]
+        if len(clusters) == 0: return None
 
         df = pd.DataFrame(clusters)
         q1, q2, c, h1, h2 = [split_to_float(df[idx]) for idx in range(5)]
@@ -502,8 +506,8 @@ class HerwigEventDataset(InMemoryDataset):
 
         # convert particle IDs to indices
         # then these indices can be embedded in N dim. space
-        h1_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h1_types))
-        h2_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h2_types))
+        h1_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h1_types, -1))
+        h2_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h2_types, -1))
 
         data = Data(
             x=torch.from_numpy(angles).float(),

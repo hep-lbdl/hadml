@@ -6,6 +6,7 @@ from pytorch_lightning.core.mixins import HyperparametersMixin
 
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
 
 from .image_converter import fig_to_array
 
@@ -291,6 +292,28 @@ class CompareParticlesEventDisc(HyperparametersMixin):
             plt.savefig(outname + "-kinematics.pdf")
         # convert the image to a numpy array
         out_images[f"particle kinematics {self.hparams.outdir}"] = fig_to_array(plt.gcf())
+        plt.close("all")
+
+        labels = np.concatenate((np.zeros_like(score_generated), np.ones_like(score_truths)))
+        scores = np.concatenate((score_generated, score_truths))
+        fpr, tpr, _ = roc_curve(labels, scores)
+        roc_auc = auc(fpr, tpr)
+
+        plt.figure()
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC Curve (AUC = %0.2f)'%roc_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic')
+        plt.legend(loc='lower right')
+
+        if outname is not None:
+            plt.savefig(outname + "-roc.png")
+            plt.savefig(outname + "-roc.pdf")
+        # convert the image to a numpy array
+        out_images[f"roc curve {self.hparams.outdir}"] = fig_to_array(plt.gcf())
         plt.close("all")
 
         return out_images

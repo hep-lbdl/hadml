@@ -26,7 +26,8 @@ logger:
   wandb:
     project: "herwigEventsDisc"
     tags: ["herwig", "Events"]
-    name: herwig_vs_herwigVar
+    name: herwigEvent_diffFlavors_beta2_dim64_again3
+    group: "NewFlavor"
 
 seed: 12345
 
@@ -67,12 +68,12 @@ model:
   num_critics: 1
   num_gen: 1
 
-cond_dataset:
-  raw_file_list:
-    - "ClusterTo2Pi0_nominal.dat"
-  processed_file_name: "herwig_graph_cond_data.pt"
+# cond_dataset:
+#   raw_file_list:
+#     - "ClusterTo2Pi0_nominal.dat"
+#   processed_file_name: "herwig_graph_cond_data.pt"
 
-obs_dataset:
-  raw_file_list:
-    - "ClusterTo2Pi0_variation.dat"
-  processed_file_name: "herwig_graph_obs_data_variation.pt"
+# obs_dataset:
+#   raw_file_list:
+#     - "ClusterTo2Pi0_variation.dat"
+#   processed_file_name: "herwig_graph_obs_data_variation.pt"

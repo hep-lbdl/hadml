@@ -29,9 +29,9 @@ generator:
 
 discriminator:
   _target_: hadml.models.components.deep_set.DeepSetModule
-  input_dim: 4
-  encoder_dims:  ${gen_list:128,2}
-  decoder_dims: ${gen_list:128,2}
+  input_dim: 68
+  encoder_dims:  ${gen_list:256,3}
+  decoder_dims: ${gen_list:256,3}
   output_dim: 1
   last_activation:
     _target_: torch.nn.Sigmoid
