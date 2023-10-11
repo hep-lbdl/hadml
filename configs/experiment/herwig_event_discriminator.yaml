@@ -19,14 +19,14 @@ defaults:
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
-task_name: herwigEventDisc
+task_name: herwigEventDisc_10_onlyPIDS
 tags: ["herwig", "Events"]
 
 logger:
   wandb:
     project: "herwigEventsDisc"
     tags: ["herwig", "Events"]
-    name: herwigEvent_diffFlavors_beta2_dim64_again3
+    name: herwigEventDisc_10_onlyPIDS
     group: "NewFlavor"
 
 seed: 12345
@@ -44,7 +44,7 @@ callbacks:
   
 # ## override /datamodule:
 datamodule:
-  batch_size: 10000
+  batch_size: 20000
   num_workers: 8
   pin_memory: True
   train_val_test_split: [200000, 30000, 30000]
