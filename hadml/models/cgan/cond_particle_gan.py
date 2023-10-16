@@ -124,6 +124,7 @@ class CondParticleGANModule(LightningModule):
     def forward(
         self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         if self.use_particle_mlp:
             particle_kinematics, particle_types = self._call_mlp_particle_generator(x_fake)

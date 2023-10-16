@@ -21,7 +21,7 @@ defaults:
 # this allows you to overwrite only specified parameters
 task_name: "herwigAllhadron"
 tags: ["herwig", "allhadrons"]
-# ckpt_path: /global/cfs/cdirs/m3246/jay/hadml/logs/herwigAllhadron/runs/2023-09-22_17-12-44/lightning-hydra-template/yvpmsp5j/checkpoints/last.ckpt
+# ckpt_path: /global/cfs/cdirs/m3246/jay/hadml/logs/herwigAllhadron/runs/2023-08-18_17-23-33/lightning-hydra-template/2sq8mqmt/checkpoints/last.ckpt
 # train: False
 
 seed: 12345
@@ -64,10 +64,10 @@ model:
 
   generator:
     input_dim: 70   # ${model.noise_dim} + ${model.cond_info_dim}
-    hidden_dims: ${gen_list:1000,4} # = [256, 256]
+    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
 
   discriminator:
-    hidden_dims: ${gen_list:1000,4} # = [256, 256]
+    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
     dropout: 0
   
   
