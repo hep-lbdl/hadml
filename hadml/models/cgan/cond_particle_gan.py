@@ -244,6 +244,7 @@ class CondParticleGANModule(LightningModule):
         self._update_gumbel_temp()
 
         cond_info, x_momenta, x_type_indices, _, _ = batch
+        cond_info = self.generator_prescale(cond_info)
         x_type_data = x_type_indices
         if self.embedding_module is not None:
             x_type_data = self.embedding_module(x_type_data)
@@ -370,9 +371,10 @@ class CondParticleGANModule(LightningModule):
 
         cond_info, x_angles, x_type_indices, x_momenta, event_labels = batch
         num_evts, _ = x_angles.shape
+        scaled_cond_info = self.generator_prescale(cond_info)
         # generate events from the Generator
         noise = self.generate_noise(num_evts).to(x_angles.device)
-        particle_angles, particle_types = self(noise, cond_info)
+        particle_angles, particle_types = self(noise, scaled_cond_info)
         particle_type_idx = torch.argmax(particle_types, dim=1).reshape(num_evts, -1)
         particle_types = particle_types.reshape(num_evts, -1)
         scaled_x_angles = self.discriminator_prescale(x_angles)

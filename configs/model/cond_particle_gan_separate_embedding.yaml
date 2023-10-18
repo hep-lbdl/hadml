@@ -1,7 +1,7 @@
 _target_: hadml.models.cgan.cond_particle_gan.CondParticleGANModule
 noise_dim: 128
 cond_info_dim: 6
-num_particle_ids: 40
+num_particle_ids: ${datamodule.core_dataset.num_used_hadron_types}
 num_output_particles: 2
 num_particle_kinematics: 2
 target_gumbel_temp: 0.1

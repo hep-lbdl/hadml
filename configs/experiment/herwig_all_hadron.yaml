@@ -69,7 +69,6 @@ model:
   discriminator:
     hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
     dropout: 0
-    input_dim: 88
   
   
   # criterion:
