@@ -75,11 +75,11 @@ model:
   #   __target__: torch.nn.BCELoss
   #   reduction: "mean"
 
-  optimizer_generator:
-    lr: 0.0003
+  # optimizer_generator:
+  #   lr: 0.000001
 
-  optimizer_discriminator:
-    lr: 0.0003
+  # optimizer_discriminator:
+  #   lr: 0.000005
 
 
 #   scheduler_generator:
