@@ -133,6 +133,7 @@ class Herwig(LightningDataModule):
         org_inputs = org_inputs[:num_asked_events]
         h1_types = h1_types[:num_asked_events]
         h2_types = h2_types[:num_asked_events]
+        event_labels = torch.from_numpy(event_labels)[:num_asked_events]
 
         new_inputs = boost(org_inputs)
 
@@ -161,7 +162,7 @@ class Herwig(LightningDataModule):
         # joblib.dump(cond_info_prescaler, f'{self.hparams.data_dir}/cond_info_prescaler.gz')
         # joblib.dump(hadron_angles_prescaler, f'{self.hparams.data_dir}/hadron_angles_prescaler.gz')
 
-        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx, true_hadron_momenta, torch.from_numpy(event_labels))
+        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx, true_hadron_momenta, event_labels)
 
         if self.hparams.num_used_hadron_types is not None:
             used_idx = target_hadron_types_idx < self.hparams.num_used_hadron_types
