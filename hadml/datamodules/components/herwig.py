@@ -1,3 +1,4 @@
+import pathlib
 from collections import Counter
 import os
 import pickle
@@ -34,6 +35,7 @@ class Herwig(LightningDataModule):
         self,
         data_dir: str = "data/",
         fname: str = "allHadrons_with_quark.dat",
+        cache_dir: Optional[str] = None,
         origin_fname: str = "cluster_ML_allHadrons_10M.txt",
         train_val_test_split: Tuple[float, float, float] = (0.5, 0.25, 0.25),
         frac_data_used: Optional[float] = 1.0,
@@ -103,44 +105,92 @@ class Herwig(LightningDataModule):
             cond_info: conditional information
             x_truth:   target truth information with conditonal information
         """
-        fname = os.path.join(self.hparams.data_dir, self.hparams.fname)
-        clusters = []
-        event_labels = []
-        with open(fname) as f:
-            for i, event_line in enumerate(f):
-                if i % 100000 == 0:
-                    print(i)
-                items = event_line.split("|")[:-1]
-                clusters += [c.split(";")[:-1] for c in items]
-                event_labels += [i] * len(items)
-                if i == 5000000: # temp solution to limit the data size
-                    break
+        fname = pathlib.Path(self.hparams.data_dir).joinpath(self.hparams.fname)
+        skip_processing = False
+        processed_fnames = None
+        if self.hparams.cache_dir is not None:
+            processed_fnames = {
+                name: pathlib.Path(self.hparams.cache_dir).joinpath(self.hparams.fname + f'_{name}.npy')
+                for name in ['q1', 'q2', 'c', 'h1', 'h2', 'event_labels']
+            }
+            skip_processing = all([os.path.exists(f) for f in processed_fnames.values()])
+        if not skip_processing:
+            clusters = []
+            q1, q2, c, h1, h2 = [], [], [], [], []
 
-        df = pd.DataFrame(clusters)
+            event_labels = []
+            labels_tmp = []
+            with open(fname) as f:
+                for i, event_line in enumerate(f):
+                    if i % 100000 == 0:
+                        print(i)
+                    if i % 5000000 == 0 and i > 0:
+                        df = pd.DataFrame(clusters)
+                        q1.append(split_to_float(df[0]))
+                        q2.append(split_to_float(df[1]))
+                        c.append(split_to_float(df[2]))
+                        h1.append(split_to_float(df[3]))
+                        h2.append(split_to_float(df[4]))
+                        event_labels.append(np.array(labels_tmp, dtype=np.int32))
+                        clusters = []
+                        labels_tmp = []
+                        del df
+                    items = event_line.split("|")[:-1]
+                    added_items = [c.split(";")[:-1] for c in items if c[:2] != '88']
+                    clusters += added_items
+                    labels_tmp += [i] * len(added_items)
 
-        q1, q2, c, h1, h2 = [split_to_float(df[idx]) for idx in range(5)]
+            df = pd.DataFrame(clusters)
+            q1.append(split_to_float(df[0]))
+            q2.append(split_to_float(df[1]))
+            c.append(split_to_float(df[2]))
+            h1.append(split_to_float(df[3]))
+            h2.append(split_to_float(df[4]))
+            event_labels.append(np.array(labels_tmp, dtype=np.int32))
+            del clusters
+            del labels_tmp
+            del df
+            q1 = np.concatenate(q1, dtype=np.float32, axis=0)
+            q2 = np.concatenate(q2, dtype=np.float32, axis=0)
+            c = np.concatenate(c, dtype=np.float32, axis=0)
+            h1 = np.concatenate(h1, dtype=np.float32, axis=0)
+            h2 = np.concatenate(h2, dtype=np.float32, axis=0)
+            event_labels = np.concatenate(event_labels, dtype=np.int32, axis=0)
 
-        cluster = c[[1, 2, 3, 4]].to_numpy()
+            if processed_fnames is not None:
+                for name, array in zip(['q1', 'q2', 'c', 'h1', 'h2', 'event_labels'], [q1, q2, c, h1, h2, event_labels]):
+                    print(f"Saving {name}...")
+                    np.save(processed_fnames[name], array)
+        else:
+            print(f"Loading data arrays...")
+            q1 = np.load(processed_fnames['q1'])
+            q2 = np.load(processed_fnames['q2'])
+            c = np.load(processed_fnames['c'])
+            h1 = np.load(processed_fnames['h1'])
+            h2 = np.load(processed_fnames['h2'])
+            event_labels = np.load(processed_fnames['event_labels'])
+        print(f"q1 shape: {q1.shape}")
+        print(f"q2 shape: {q2.shape}")
+        print(f"c shape: {c.shape}")
+        print(f"h1 shape: {h1.shape}")
+        print(f"h2 shape: {h2.shape}")
+        print(f"event_labels shape: {event_labels.shape}")
 
-        h1_types = h1[[0]].to_numpy()
-        h2_types = h2[[0]].to_numpy()
-        h1 = h1[[1, 2, 3, 4]].to_numpy()
-        h2 = h2[[1, 2, 3, 4]].to_numpy()
+        cluster = c[:, [1, 2, 3, 4]]
+        del c
 
-        q1_types = q1[[0]].to_numpy()
-        q2_types = q2[[0]].to_numpy()
-        q1 = q1[[1, 2, 3, 4]].to_numpy()
-        q2 = q2[[1, 2, 3, 4]].to_numpy()
+        h1_types = h1[:, [0]]
+        h2_types = h2[:, [0]]
+        h1 = h1[:, [1, 2, 3, 4]]
+        h2 = h2[:, [1, 2, 3, 4]]
 
-        event_labels = np.array(event_labels)
+        # q1_types = q1[:, [0]]
+        # q2_types = q2[:, [0]]
+        q1 = q1[:, [1, 2, 3, 4]]
+        q2 = q2[:, [1, 2, 3, 4]]
 
         org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
-        event_labels = event_labels[q1_types[:, 0] != 88]
-        org_inputs = org_inputs[q1_types[:, 0] != 88]
-        h1_types = h1_types[q1_types[:, 0] != 88]
-        h2_types = h2_types[q1_types[:, 0] != 88]
-        q2_types = q2_types[q1_types[:, 0] != 88]
-        q1_types = q1_types[q1_types[:, 0] != 88]
+        del cluster, q1, q2, h1, h2
         mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys())))
         event_labels = event_labels[mask]
         org_inputs = org_inputs[mask]
@@ -152,6 +202,8 @@ class Herwig(LightningDataModule):
             self.hparams.examples_used, self.hparams.frac_data_used, num_tot_evts
         )
         org_inputs = org_inputs[:num_asked_events]
+        h1_types = h1_types[:num_asked_events]
+        h2_types = h2_types[:num_asked_events]
 
         new_inputs = boost(org_inputs)
 

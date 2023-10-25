@@ -65,11 +65,14 @@ def create_boost_fn(cluster_4vec: np.ndarray):
     mass = calculate_mass(cluster_4vec)
     E0, p0 = cluster_4vec[:, 0], cluster_4vec[:, 1:]
     gamma = E0 / mass
+    del E0
 
     velocity = p0 / gamma.reshape(-1, 1) / mass.reshape(-1, 1)
+    del mass, p0
     v_mag = np.sqrt((velocity**2).sum(axis=1))
     n = (velocity / v_mag.reshape(-1, 1))
     n[np.isnan(n)] = 0
+    del velocity
 
     def boost_fn(lab_4vec: np.ndarray):
         """4vector [E, px, py, pz] in lab frame"""
