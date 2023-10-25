@@ -102,7 +102,7 @@ def boost(a_row: np.ndarray):
     boost_fn, _ = create_boost_fn(a_row[:, :4])
     n_particles = (a_row.shape[1]) // 4
     results = [boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)]
-    return np.concatenate(a_row[:, :4] + results, axis=1)
+    return np.concatenate([a_row[:, :4]] + results, axis=1)
 
 
 def inv_boost(a_row: np.ndarray):
