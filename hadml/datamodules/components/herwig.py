@@ -43,13 +43,15 @@ class Herwig(LightningDataModule):
         num_output_hadrons: int = 2,
         num_particle_kinematics: int = 2,
         # hadron_type_embedding_dim: int = 10,
-        num_used_hadron_types: Optional[int] = None
+        num_used_hadron_types: Optional[int] = None,
     ):
         """This is for the GAN datamodule. It reads clusters from a file"""
         super().__init__()
         self.save_hyperparameters(logger=False)
 
-        self.hparams.examples_used = process_data_split(examples_used, frac_data_used, train_val_test_split)
+        self.hparams.examples_used = process_data_split(
+            examples_used, frac_data_used, train_val_test_split
+        )
 
         self.cond_dim: Optional[int] = None
         self.output_dim: Optional[int] = None
@@ -123,8 +125,9 @@ class Herwig(LightningDataModule):
         org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
         del cluster, q1, q2, h1, h2
 
-        event_labels, h1_types, h2_types, org_inputs = self._filter_unnamed_types(event_labels, h1_types, h2_types,
-                                                                                  org_inputs)
+        event_labels, h1_types, h2_types, org_inputs = self._filter_unnamed_types(
+            event_labels, h1_types, h2_types, org_inputs
+        )
 
         num_tot_evts = len(org_inputs)
         num_asked_events = get_num_asked_events(
@@ -157,25 +160,36 @@ class Herwig(LightningDataModule):
         # then these indices can be embedded in N dim. space
         h1_type_indices = np.vectorize(self.pids_to_ix.get)(h1_types.astype(np.int16))
         h2_type_indices = np.vectorize(self.pids_to_ix.get)(h2_types.astype(np.int16))
-        target_hadron_types_idx = torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1))
+        target_hadron_types_idx = torch.from_numpy(
+            np.concatenate([h1_type_indices, h2_type_indices], axis=1)
+        )
 
         # joblib.dump(cond_info_prescaler, f'{self.hparams.data_dir}/cond_info_prescaler.gz')
         # joblib.dump(hadron_angles_prescaler, f'{self.hparams.data_dir}/hadron_angles_prescaler.gz')
 
-        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx, true_hadron_momenta, event_labels)
+        dataset = (
+            cond_info,
+            true_hadron_angles,
+            target_hadron_types_idx,
+            true_hadron_momenta,
+            event_labels,
+        )
 
         if self.hparams.num_used_hadron_types is not None:
             used_idx = target_hadron_types_idx < self.hparams.num_used_hadron_types
             used_idx = used_idx.sum(axis=1).eq(used_idx.shape[1])
-            print(f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used.")
+            print(
+                f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used."
+            )
             dataset = tuple(table[used_idx] for table in dataset)
-        
+
         self.summarize()
         return dataset
 
     def _filter_unnamed_types(self, event_labels, h1_types, h2_types, org_inputs):
         mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (
-            np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys())))
+            np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys()))
+        )
         event_labels = event_labels[mask]
         org_inputs = org_inputs[mask]
         h1_types = h1_types[mask]
@@ -185,7 +199,7 @@ class Herwig(LightningDataModule):
     @staticmethod
     def _get_angles(four_vector):
         _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
-        pT = np.sqrt(px ** 2 + py ** 2)
+        pT = np.sqrt(px**2 + py**2)
         phi = np.arctan(px / py)
         theta = np.arctan(pT / pz)
         # phi = np.sign(px) * np.arcsin(py / pT) + (1 - np.sign(px)) * np.sign(py) * np.pi / 2
@@ -197,10 +211,14 @@ class Herwig(LightningDataModule):
         processed_fnames = None
         if self.hparams.cache_dir is not None:
             processed_fnames = {
-                name: pathlib.Path(self.hparams.cache_dir).joinpath(self.hparams.fname + f'_{name}.npy')
-                for name in ['q1', 'q2', 'c', 'h1', 'h2', 'event_labels']
+                name: pathlib.Path(self.hparams.cache_dir).joinpath(
+                    self.hparams.fname + f"_{name}.npy"
+                )
+                for name in ["q1", "q2", "c", "h1", "h2", "event_labels"]
             }
-            load_from_cache = all([os.path.exists(f) for f in processed_fnames.values()])
+            load_from_cache = all(
+                [os.path.exists(f) for f in processed_fnames.values()]
+            )
         if not load_from_cache:
             cluster, event_labels, h1, h2, q1, q2 = self._load_raw_dataset(fname)
 
@@ -208,20 +226,25 @@ class Herwig(LightningDataModule):
                 self._save_data_arrays(event_labels, h1, h2, processed_fnames, q1, q2)
         else:
             print(f"Loading cached data arrays...")
-            cluster, event_labels, h1, h2, q1, q2 = self._load_data_arrays(processed_fnames)
+            cluster, event_labels, h1, h2, q1, q2 = self._load_data_arrays(
+                processed_fnames
+            )
         return cluster, event_labels, h1, h2, q1, q2
 
     def _load_data_arrays(self, processed_fnames):
-        q1 = np.load(processed_fnames['q1'])
-        q2 = np.load(processed_fnames['q2'])
-        cluster = np.load(processed_fnames['c'])
-        h1 = np.load(processed_fnames['h1'])
-        h2 = np.load(processed_fnames['h2'])
-        event_labels = np.load(processed_fnames['event_labels'])
+        q1 = np.load(processed_fnames["q1"])
+        q2 = np.load(processed_fnames["q2"])
+        cluster = np.load(processed_fnames["c"])
+        h1 = np.load(processed_fnames["h1"])
+        h2 = np.load(processed_fnames["h2"])
+        event_labels = np.load(processed_fnames["event_labels"])
         return cluster, event_labels, h1, h2, q1, q2
 
     def _save_data_arrays(self, event_labels, h1, h2, processed_fnames, q1, q2):
-        for name, array in zip(['q1', 'q2', 'c', 'h1', 'h2', 'event_labels'], [q1, q2, c, h1, h2, event_labels]):
+        for name, array in zip(
+            ["q1", "q2", "c", "h1", "h2", "event_labels"],
+            [q1, q2, c, h1, h2, event_labels],
+        ):
             print(f"Saving {name}...")
             np.save(processed_fnames[name], array)
 
@@ -246,7 +269,7 @@ class Herwig(LightningDataModule):
                     labels_tmp = []
                     del df
                 items = event_line.split("|")[:-1]
-                added_items = [c.split(";")[:-1] for c in items if c[:2] != '88']
+                added_items = [c.split(";")[:-1] for c in items if c[:2] != "88"]
                 clusters += added_items
                 labels_tmp += [i] * len(added_items)
         df = pd.DataFrame(clusters)
