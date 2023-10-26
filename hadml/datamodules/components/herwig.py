@@ -1,3 +1,4 @@
+import pathlib
 from collections import Counter
 import os
 import pickle
@@ -34,6 +35,7 @@ class Herwig(LightningDataModule):
         self,
         data_dir: str = "data/",
         fname: str = "allHadrons_with_quark.dat",
+        cache_dir: Optional[str] = None,
         origin_fname: str = "cluster_ML_allHadrons_10M.txt",
         train_val_test_split: Tuple[float, float, float] = (0.5, 0.25, 0.25),
         frac_data_used: Optional[float] = 1.0,
@@ -41,13 +43,15 @@ class Herwig(LightningDataModule):
         num_output_hadrons: int = 2,
         num_particle_kinematics: int = 2,
         # hadron_type_embedding_dim: int = 10,
-        num_used_hadron_types: Optional[int] = None
+        num_used_hadron_types: Optional[int] = None,
     ):
         """This is for the GAN datamodule. It reads clusters from a file"""
         super().__init__()
         self.save_hyperparameters(logger=False)
 
-        self.hparams.examples_used = process_data_split(examples_used, frac_data_used, train_val_test_split)
+        self.hparams.examples_used = process_data_split(
+            examples_used, frac_data_used, train_val_test_split
+        )
 
         self.cond_dim: Optional[int] = None
         self.output_dim: Optional[int] = None
@@ -103,68 +107,40 @@ class Herwig(LightningDataModule):
             cond_info: conditional information
             x_truth:   target truth information with conditonal information
         """
-        fname = os.path.join(self.hparams.data_dir, self.hparams.fname)
-        clusters = []
-        event_labels = []
-        with open(fname) as f:
-            for i, event_line in enumerate(f):
-                if i % 100000 == 0:
-                    print(i)
-                items = event_line.split("|")[:-1]
-                clusters += [c.split(";")[:-1] for c in items]
-                event_labels += [i] * len(items)
-                if i == 5000000: # temp solution to limit the data size
-                    break
+        fname = pathlib.Path(self.hparams.data_dir).joinpath(self.hparams.fname)
+        cluster, event_labels, h1, h2, q1, q2 = self._load_dataset(fname)
 
-        df = pd.DataFrame(clusters)
+        cluster = cluster[:, [1, 2, 3, 4]]
 
-        q1, q2, c, h1, h2 = [split_to_float(df[idx]) for idx in range(5)]
+        h1_types = h1[:, [0]]
+        h2_types = h2[:, [0]]
+        h1 = h1[:, [1, 2, 3, 4]]
+        h2 = h2[:, [1, 2, 3, 4]]
 
-        cluster = c[[1, 2, 3, 4]].to_numpy()
-
-        h1_types = h1[[0]].to_numpy()
-        h2_types = h2[[0]].to_numpy()
-        h1 = h1[[1, 2, 3, 4]].to_numpy()
-        h2 = h2[[1, 2, 3, 4]].to_numpy()
-
-        q1_types = q1[[0]].to_numpy()
-        q2_types = q2[[0]].to_numpy()
-        q1 = q1[[1, 2, 3, 4]].to_numpy()
-        q2 = q2[[1, 2, 3, 4]].to_numpy()
-
-        event_labels = np.array(event_labels)
+        # q1_types = q1[:, [0]]
+        # q2_types = q2[:, [0]]
+        q1 = q1[:, [1, 2, 3, 4]]
+        q2 = q2[:, [1, 2, 3, 4]]
 
         org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
-        event_labels = event_labels[q1_types[:, 0] != 88]
-        org_inputs = org_inputs[q1_types[:, 0] != 88]
-        h1_types = h1_types[q1_types[:, 0] != 88]
-        h2_types = h2_types[q1_types[:, 0] != 88]
-        q2_types = q2_types[q1_types[:, 0] != 88]
-        q1_types = q1_types[q1_types[:, 0] != 88]
-        mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys())))
-        event_labels = event_labels[mask]
-        org_inputs = org_inputs[mask]
-        h1_types = h1_types[mask]
-        h2_types = h2_types[mask]
+        del cluster, q1, q2, h1, h2
+
+        event_labels, h1_types, h2_types, org_inputs = self._filter_unnamed_types(
+            event_labels, h1_types, h2_types, org_inputs
+        )
 
         num_tot_evts = len(org_inputs)
         num_asked_events = get_num_asked_events(
             self.hparams.examples_used, self.hparams.frac_data_used, num_tot_evts
         )
         org_inputs = org_inputs[:num_asked_events]
+        h1_types = h1_types[:num_asked_events]
+        h2_types = h2_types[:num_asked_events]
+        event_labels = torch.from_numpy(event_labels)[:num_asked_events]
 
         new_inputs = boost(org_inputs)
 
-        def get_angles(four_vector):
-            _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
-            pT = np.sqrt(px**2 + py**2)
-            phi = np.arctan(px / py)
-            theta = np.arctan(pT / pz)
-            # phi = np.sign(px) * np.arcsin(py / pT) + (1 - np.sign(px)) * np.sign(py) * np.pi / 2
-            # theta = np.arcsin(pT / np.sqrt(pz**2 + pT**2))
-            return phi, theta
-
-        phi, theta = get_angles(new_inputs[:, -4:])
+        phi, theta = self._get_angles(new_inputs[:, -4:])
         theta = theta + math.pi * (theta < 0)
 
         true_hadron_angles = np.stack([phi, theta], axis=1)
@@ -173,7 +149,7 @@ class Herwig(LightningDataModule):
         true_hadron_angles = torch.from_numpy(true_hadron_angles.astype(np.float32))
         true_hadron_momenta = torch.from_numpy(org_inputs[:, -8:])
 
-        q_phi, q_theta = get_angles(new_inputs[:, 4:8])
+        q_phi, q_theta = self._get_angles(new_inputs[:, 4:8])
         q_momenta = np.stack([q_phi, q_theta], axis=1)
         cond_info = np.concatenate([org_inputs[:, :4], q_momenta], axis=1)
         # cond_info_prescaler = MinMaxScaler((-1, 1))
@@ -184,21 +160,135 @@ class Herwig(LightningDataModule):
         # then these indices can be embedded in N dim. space
         h1_type_indices = np.vectorize(self.pids_to_ix.get)(h1_types.astype(np.int16))
         h2_type_indices = np.vectorize(self.pids_to_ix.get)(h2_types.astype(np.int16))
-        target_hadron_types_idx = torch.from_numpy(np.concatenate([h1_type_indices, h2_type_indices], axis=1))
+        target_hadron_types_idx = torch.from_numpy(
+            np.concatenate([h1_type_indices, h2_type_indices], axis=1)
+        )
 
         # joblib.dump(cond_info_prescaler, f'{self.hparams.data_dir}/cond_info_prescaler.gz')
         # joblib.dump(hadron_angles_prescaler, f'{self.hparams.data_dir}/hadron_angles_prescaler.gz')
 
-        dataset = (cond_info, true_hadron_angles, target_hadron_types_idx, true_hadron_momenta, torch.from_numpy(event_labels))
+        dataset = (
+            cond_info,
+            true_hadron_angles,
+            target_hadron_types_idx,
+            true_hadron_momenta,
+            event_labels,
+        )
 
         if self.hparams.num_used_hadron_types is not None:
             used_idx = target_hadron_types_idx < self.hparams.num_used_hadron_types
             used_idx = used_idx.sum(axis=1).eq(used_idx.shape[1])
-            print(f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used.")
+            print(
+                f"{1 - used_idx.to(torch.float32).mean():.3f} of all training examples were dropped due to not all particle types being used."
+            )
             dataset = tuple(table[used_idx] for table in dataset)
-        
+
         self.summarize()
         return dataset
+
+    def _filter_unnamed_types(self, event_labels, h1_types, h2_types, org_inputs):
+        mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (
+            np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys()))
+        )
+        event_labels = event_labels[mask]
+        org_inputs = org_inputs[mask]
+        h1_types = h1_types[mask]
+        h2_types = h2_types[mask]
+        return event_labels, h1_types, h2_types, org_inputs
+
+    @staticmethod
+    def _get_angles(four_vector):
+        _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
+        pT = np.sqrt(px**2 + py**2)
+        phi = np.arctan(px / py)
+        theta = np.arctan(pT / pz)
+        # phi = np.sign(px) * np.arcsin(py / pT) + (1 - np.sign(px)) * np.sign(py) * np.pi / 2
+        # theta = np.arcsin(pT / np.sqrt(pz**2 + pT**2))
+        return phi, theta
+
+    def _load_dataset(self, fname):
+        load_from_cache = False
+        processed_fnames = None
+        if self.hparams.cache_dir is not None:
+            processed_fnames = {
+                name: pathlib.Path(self.hparams.cache_dir).joinpath(
+                    self.hparams.fname + f"_{name}.npy"
+                )
+                for name in ["q1", "q2", "c", "h1", "h2", "event_labels"]
+            }
+            load_from_cache = all(
+                [os.path.exists(f) for f in processed_fnames.values()]
+            )
+        if not load_from_cache:
+            cluster, event_labels, h1, h2, q1, q2 = self._load_raw_dataset(fname)
+
+            if processed_fnames is not None:
+                self._save_data_arrays(event_labels, h1, h2, processed_fnames, q1, q2)
+        else:
+            print(f"Loading cached data arrays...")
+            cluster, event_labels, h1, h2, q1, q2 = self._load_data_arrays(
+                processed_fnames
+            )
+        return cluster, event_labels, h1, h2, q1, q2
+
+    def _load_data_arrays(self, processed_fnames):
+        q1 = np.load(processed_fnames["q1"])
+        q2 = np.load(processed_fnames["q2"])
+        cluster = np.load(processed_fnames["c"])
+        h1 = np.load(processed_fnames["h1"])
+        h2 = np.load(processed_fnames["h2"])
+        event_labels = np.load(processed_fnames["event_labels"])
+        return cluster, event_labels, h1, h2, q1, q2
+
+    def _save_data_arrays(self, event_labels, h1, h2, processed_fnames, q1, q2):
+        for name, array in zip(
+            ["q1", "q2", "c", "h1", "h2", "event_labels"],
+            [q1, q2, c, h1, h2, event_labels],
+        ):
+            print(f"Saving {name}...")
+            np.save(processed_fnames[name], array)
+
+    def _load_raw_dataset(self, fname):
+        clusters = []
+        q1, q2, c, h1, h2 = [], [], [], [], []
+        event_labels = []
+        labels_tmp = []
+        with open(fname) as f:
+            for i, event_line in enumerate(f):
+                if i % 100000 == 0:
+                    print(i)
+                if i % 5000000 == 0 and i > 0:
+                    df = pd.DataFrame(clusters)
+                    q1.append(split_to_float(df[0]))
+                    q2.append(split_to_float(df[1]))
+                    c.append(split_to_float(df[2]))
+                    h1.append(split_to_float(df[3]))
+                    h2.append(split_to_float(df[4]))
+                    event_labels.append(np.array(labels_tmp, dtype=np.int32))
+                    clusters = []
+                    labels_tmp = []
+                    del df
+                items = event_line.split("|")[:-1]
+                added_items = [c.split(";")[:-1] for c in items if c[:2] != "88"]
+                clusters += added_items
+                labels_tmp += [i] * len(added_items)
+        df = pd.DataFrame(clusters)
+        q1.append(split_to_float(df[0]))
+        q2.append(split_to_float(df[1]))
+        c.append(split_to_float(df[2]))
+        h1.append(split_to_float(df[3]))
+        h2.append(split_to_float(df[4]))
+        event_labels.append(np.array(labels_tmp, dtype=np.int32))
+        del clusters
+        del labels_tmp
+        del df
+        q1 = np.concatenate(q1, dtype=np.float32, axis=0)
+        q2 = np.concatenate(q2, dtype=np.float32, axis=0)
+        c = np.concatenate(c, dtype=np.float32, axis=0)
+        h1 = np.concatenate(h1, dtype=np.float32, axis=0)
+        h2 = np.concatenate(h2, dtype=np.float32, axis=0)
+        event_labels = np.concatenate(event_labels, dtype=np.int32, axis=0)
+        return c, event_labels, h1, h2, q1, q2
 
     def summarize(self):
         print(f"Reading data from: {self.hparams.data_dir}")

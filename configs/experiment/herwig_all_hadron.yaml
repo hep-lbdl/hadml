@@ -46,7 +46,8 @@ datamodule:
     train_val_test_split: [ 0.97, 0.005, 0.025 ]
     frac_data_used: 1.0
     num_used_hadron_types: 40
-    fname: allHadrons_with_quark_flavour.dat
+    fname: ClusterTo2Pi0_new_100M.dat
+    cache_dir: /global/cfs/projectdirs/m3246/hadml/processed_data
 
 
 

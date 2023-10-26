@@ -65,11 +65,14 @@ def create_boost_fn(cluster_4vec: np.ndarray):
     mass = calculate_mass(cluster_4vec)
     E0, p0 = cluster_4vec[:, 0], cluster_4vec[:, 1:]
     gamma = E0 / mass
+    del E0
 
     velocity = p0 / gamma.reshape(-1, 1) / mass.reshape(-1, 1)
+    del mass, p0
     v_mag = np.sqrt((velocity**2).sum(axis=1))
-    n = (velocity / v_mag.reshape(-1, 1))
+    n = velocity / v_mag.reshape(-1, 1)
     n[np.isnan(n)] = 0
+    del velocity
 
     def boost_fn(lab_4vec: np.ndarray):
         """4vector [E, px, py, pz] in lab frame"""
@@ -77,7 +80,11 @@ def create_boost_fn(cluster_4vec: np.ndarray):
         p = lab_4vec[:, 1:]
         n_dot_p = np.sum((n * p), axis=1)
         E_prime = gamma * (E - v_mag * n_dot_p)
-        P_prime = p + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n - (gamma * E * v_mag).reshape(-1, 1) * n
+        P_prime = (
+            p
+            + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n
+            - (gamma * E * v_mag).reshape(-1, 1) * n
+        )
         return np.concatenate([E_prime.reshape(-1, 1), P_prime], axis=1)
 
     def inv_boost_fn(boost_4vec: np.ndarray):
@@ -86,7 +93,11 @@ def create_boost_fn(cluster_4vec: np.ndarray):
         P_prime = boost_4vec[:, 1:]
         n_dot_p = np.sum((n * P_prime), axis=1)
         E = gamma * (E_prime + v_mag * n_dot_p)
-        P = P_prime + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n + (gamma * E_prime * v_mag).reshape(-1, 1) * n
+        P = (
+            P_prime
+            + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n
+            + (gamma * E_prime * v_mag).reshape(-1, 1) * n
+        )
         return np.concatenate([E.reshape(-1, 1), P], axis=1)
 
     return boost_fn, inv_boost_fn
@@ -99,7 +110,7 @@ def boost(a_row: np.ndarray):
     boost_fn, _ = create_boost_fn(a_row[:, :4])
     n_particles = (a_row.shape[1]) // 4
     results = [boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)]
-    return np.concatenate(a_row[:, :4] + results, axis=1)
+    return np.concatenate([a_row[:, :4]] + results, axis=1)
 
 
 def inv_boost(a_row: np.ndarray):
@@ -108,7 +119,9 @@ def inv_boost(a_row: np.ndarray):
     assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
     _, inv_boost_fn = create_boost_fn(a_row[:, :4])
     n_particles = (a_row.shape[1]) // 4
-    results = [inv_boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)]
+    results = [
+        inv_boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)
+    ]
     return np.concatenate(a_row[:, :4] + results, axis=1)
 
 
