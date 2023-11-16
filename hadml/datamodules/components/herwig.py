@@ -117,16 +117,16 @@ class Herwig(LightningDataModule):
         h1 = h1[:, [1, 2, 3, 4]]
         h2 = h2[:, [1, 2, 3, 4]]
 
-        # q1_types = q1[:, [0]]
-        # q2_types = q2[:, [0]]
+        q1_types = q1[:, [0]]
+        q2_types = q2[:, [0]]
         q1 = q1[:, [1, 2, 3, 4]]
         q2 = q2[:, [1, 2, 3, 4]]
 
         org_inputs = np.concatenate([cluster, q1, q2, h1, h2], axis=1)
         del cluster, q1, q2, h1, h2
 
-        event_labels, h1_types, h2_types, org_inputs = self._filter_unnamed_types(
-            event_labels, h1_types, h2_types, org_inputs
+        event_labels, q1_types, q2_types, h1_types, h2_types, org_inputs = self._filter_unnamed_types(
+            event_labels, q1_types, q2_types, h1_types, h2_types, org_inputs
         )
 
         num_tot_evts = len(org_inputs)
@@ -134,6 +134,8 @@ class Herwig(LightningDataModule):
             self.hparams.examples_used, self.hparams.frac_data_used, num_tot_evts
         )
         org_inputs = org_inputs[:num_asked_events]
+        q1_types = q1_types[:num_asked_events]
+        q2_types = q2_types[:num_asked_events]
         h1_types = h1_types[:num_asked_events]
         h2_types = h2_types[:num_asked_events]
         event_labels = torch.from_numpy(event_labels)[:num_asked_events]
@@ -151,7 +153,7 @@ class Herwig(LightningDataModule):
 
         q_phi, q_theta = self._get_angles(new_inputs[:, 4:8])
         q_momenta = np.stack([q_phi, q_theta], axis=1)
-        cond_info = np.concatenate([org_inputs[:, :4], q_momenta], axis=1)
+        cond_info = np.concatenate([org_inputs[:, :4], q1_types, q2_types, q_momenta], axis=1)
         # cond_info_prescaler = MinMaxScaler((-1, 1))
         # cond_info = cond_info_prescaler.fit_transform(cond_info)
         cond_info = torch.from_numpy(cond_info.astype(np.float32))
@@ -186,15 +188,17 @@ class Herwig(LightningDataModule):
         self.summarize()
         return dataset
 
-    def _filter_unnamed_types(self, event_labels, h1_types, h2_types, org_inputs):
+    def _filter_unnamed_types(self, event_labels, q1_types, q2_types, h1_types, h2_types, org_inputs):
         mask = (np.isin(h1_types.reshape(-1), list(self.pids_to_ix.keys()))) & (
             np.isin(h2_types.reshape(-1), list(self.pids_to_ix.keys()))
         )
         event_labels = event_labels[mask]
         org_inputs = org_inputs[mask]
+        q1_types = q1_types[mask]
+        q2_types = q2_types[mask]
         h1_types = h1_types[mask]
         h2_types = h2_types[mask]
-        return event_labels, h1_types, h2_types, org_inputs
+        return event_labels, q1_types, q2_types, h1_types, h2_types, org_inputs
 
     @staticmethod
     def _get_angles(four_vector):
@@ -223,7 +227,7 @@ class Herwig(LightningDataModule):
             cluster, event_labels, h1, h2, q1, q2 = self._load_raw_dataset(fname)
 
             if processed_fnames is not None:
-                self._save_data_arrays(event_labels, h1, h2, processed_fnames, q1, q2)
+                self._save_data_arrays(event_labels, h1, h2, processed_fnames, q1, q2, cluster)
         else:
             print(f"Loading cached data arrays...")
             cluster, event_labels, h1, h2, q1, q2 = self._load_data_arrays(
@@ -240,10 +244,10 @@ class Herwig(LightningDataModule):
         event_labels = np.load(processed_fnames["event_labels"])
         return cluster, event_labels, h1, h2, q1, q2
 
-    def _save_data_arrays(self, event_labels, h1, h2, processed_fnames, q1, q2):
+    def _save_data_arrays(self, event_labels, h1, h2, processed_fnames, q1, q2, cluster):
         for name, array in zip(
             ["q1", "q2", "c", "h1", "h2", "event_labels"],
-            [q1, q2, c, h1, h2, event_labels],
+            [q1, q2, cluster, h1, h2, event_labels],
         ):
             print(f"Saving {name}...")
             np.save(processed_fnames[name], array)
