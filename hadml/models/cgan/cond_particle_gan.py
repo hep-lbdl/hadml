@@ -435,7 +435,8 @@ class CondParticleGANModule(LightningModule):
             "truths": truths,
             "particle_momenta": particle_momenta.cpu().detach().numpy(),
             "x_momenta": x_momenta.reshape((-1, 4)).cpu().detach().numpy(),
-            "event_labels": event_labels.cpu().detach().numpy()
+            "event_labels": event_labels.cpu().detach().numpy(),
+            "cond_info": cond_info.cpu().detach().numpy()
         }
 
     def compare(self, predictions, truths, x_momenta, particle_momenta, outname) -> None:
@@ -464,7 +465,7 @@ class CondParticleGANModule(LightningModule):
         return perf
 
     def validation_epoch_end(self, outputs: List[Any]):
-    
+
         swd_distance = self.val_swd.compute()
         particle_swd = self.val_particle_swd.compute()
         kinematic_swd = self.val_kinematic_swd.compute()
@@ -506,12 +507,13 @@ class CondParticleGANModule(LightningModule):
             or kinematic_swd <= self.val_kinematic_swd.compute()
             or particle_swd <= self.val_particle_swd.compute()
         ):
-            
+
             predictions = []
             truths = []
             particle_momenta = []
             x_momenta = []
             event_labels = []
+            cond_info = []
             for perf in outputs:
                 predictions = (
                     perf["predictions"]
@@ -538,13 +540,19 @@ class CondParticleGANModule(LightningModule):
                     if len(event_labels) == 0
                     else np.concatenate((event_labels, perf["event_labels"]))
                 )
+                cond_info = (
+                    perf["cond_info"]
+                    if len(cond_info) == 0
+                    else np.concatenate((cond_info, perf["cond_info"]))
+                )
 
             outname = f"val-{self.current_epoch:02d}"
 
             # print(truths)
             # print(predictions)
 
-            self.compare(predictions, truths, x_momenta, particle_momenta, outname)
+            if len(truths) > 0:
+                self.compare(predictions, truths, x_momenta, particle_momenta, outname)
 
         if self.current_epoch == 0:
             os.makedirs(self.hparams.outdir, exist_ok=True)
@@ -553,7 +561,8 @@ class CondParticleGANModule(LightningModule):
                                 truths=truths,
                                 x_momenta=x_momenta,
                                 particle_momenta=particle_momenta,
-                                event_labels=event_labels)
+                                event_labels=event_labels,
+                                cond_info=cond_info)
         if self.current_epoch == self.trainer.max_epochs - 1:
             os.makedirs(self.hparams.outdir, exist_ok=True)
             np.savez_compressed(os.path.join(self.hparams.outdir, "final.npz"),
@@ -561,7 +570,8 @@ class CondParticleGANModule(LightningModule):
                                 truths=truths,
                                 x_momenta=x_momenta,
                                 particle_momenta=particle_momenta,
-                                event_labels=event_labels)
+                                event_labels=event_labels,
+                                cond_info=cond_info)
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
@@ -571,7 +581,7 @@ class CondParticleGANModule(LightningModule):
         self.test_kinematic_swd(perf["kinematic_swd"])
 
         return perf
-    
+
     def test_epoch_end(self, outputs: List[Any]):
 
         swd_distance = self.test_swd.compute()
@@ -593,12 +603,13 @@ class CondParticleGANModule(LightningModule):
         self.test_swd.reset()
         self.test_particle_swd.reset()
         self.test_kinematic_swd.reset()
-            
+
         predictions = []
         truths = []
         particle_momenta = []
         x_momenta = []
         event_labels = []
+        cond_info = []
         for perf in outputs:
             predictions = (
                 perf["predictions"]
@@ -625,6 +636,11 @@ class CondParticleGANModule(LightningModule):
                 if len(event_labels) == 0
                 else np.concatenate((event_labels, perf["event_labels"]))
             )
+            cond_info = (
+                perf["cond_info"]
+                if len(cond_info) == 0
+                else np.concatenate((cond_info, perf["cond_info"]))
+            )
 
         outname = f"test-{self.current_epoch:02d}"
         self.compare(predictions, truths, x_momenta, particle_momenta, outname)
@@ -635,4 +651,5 @@ class CondParticleGANModule(LightningModule):
                             truths=truths,
                             x_momenta=x_momenta,
                             particle_momenta=particle_momenta,
-                            event_labels=event_labels)
+                            event_labels=event_labels,
+                            cond_info=cond_info)
