@@ -17,6 +17,7 @@ from hadml.utils.utils import (
     get_r1_grad_penalty,
     get_one_hot,
 )
+from hadml.models.components import OneHotEmbedding
 
 
 class CondParticleGANModule(LightningModule):
@@ -131,6 +132,8 @@ class CondParticleGANModule(LightningModule):
         else:
             particle_kinematics, particle_types = self._call_mlp_generator(x_fake)
         particle_kinematics = torch.tanh(particle_kinematics)
+        particle_types = F.gumbel_softmax(particle_types,
+                                          self.current_gumbel_temp)
         return particle_kinematics, particle_types
 
 
@@ -275,18 +278,15 @@ class CondParticleGANModule(LightningModule):
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
-        if self.embedding_module is None:
-            raise NotImplementedError("Embedding module must be specified.")
+        if not isinstance(self.embedding_module, OneHotEmbedding):
+            raise NotImplementedError("Embedding module must be `OneHotEmbedding`.")
         else:
-            particle_types = particle_types.view(-1, self.hparams.num_particle_ids)
-            particle_type_data = F.gumbel_softmax(particle_types,
-                                                  self.current_gumbel_temp)
-            particle_type_data = particle_type_data.reshape(
+            particle_types = particle_types.reshape(
                 particle_kinematics.shape[0], -1
             )
 
         x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
-        return particle_type_data, x_generated
+        return particle_types, x_generated
 
     def _generator_step(
         self, particle_type_data: torch.Tensor, x_generated: torch.Tensor
