@@ -17,7 +17,7 @@ from hadml.utils.utils import (
     get_r1_grad_penalty,
     get_one_hot,
 )
-from hadml.models.components import OneHotEmbedding
+from hadml.models.components.mlp import OneHotEmbeddingModule
 
 
 class CondParticleGANModule(LightningModule):
@@ -278,8 +278,8 @@ class CondParticleGANModule(LightningModule):
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
-        if not isinstance(self.embedding_module, OneHotEmbedding):
-            raise NotImplementedError("Embedding module must be `OneHotEmbedding`.")
+        if not isinstance(self.embedding_module, OneHotEmbeddingModule):
+            raise NotImplementedError("Embedding module must be `OneHotEmbeddingModule`.")
         else:
             particle_types = particle_types.reshape(
                 particle_kinematics.shape[0], -1
