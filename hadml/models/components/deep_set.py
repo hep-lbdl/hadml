@@ -16,11 +16,19 @@ class DeepSetModule(nn.Module):
         decoder_dims: List[int],
         output_dim: int,
         last_activation: Optional[nn.Module] = None,
+        layer_norm: bool = True,
     ):
         super().__init__()
-        self.encoder = MLPModule(input_dim, encoder_dims, decoder_dims[0])
+        self.encoder = MLPModule(input_dim,
+                                 encoder_dims,
+                                 decoder_dims[0],
+                                 layer_norm=layer_norm)
         self.decoder = MLPModule(
-            decoder_dims[0], decoder_dims, output_dim, last_activation=last_activation
+            decoder_dims[0],
+            decoder_dims,
+            output_dim,
+            last_activation=last_activation,
+            layer_norm=layer_norm
         )
 
     def forward(self, x: Tensor, batch: Tensor, *args, **kwargs) -> Tensor:

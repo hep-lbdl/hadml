@@ -4,7 +4,7 @@ cond_info_dim: 8
 num_particle_ids: ${datamodule.core_dataset.num_used_hadron_types}
 num_output_particles: 2
 num_particle_kinematics: 2
-target_gumbel_temp: 0.1
+target_gumbel_temp: 0.01
 
 ## how often the optimizers will be used.
 num_critics: 1
@@ -13,12 +13,12 @@ num_gen: 1
 optimizer_generator:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.0003
+  lr: 0.0002
 
 optimizer_discriminator:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.0003
+  lr: 0.0002
 
 generator:
   _target_: hadml.models.components.mlp.MLPModule
