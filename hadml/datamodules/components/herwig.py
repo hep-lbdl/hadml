@@ -20,6 +20,7 @@ from hadml.datamodules.components.utils import (
     boost,
     process_data_split,
     get_num_asked_events,
+    get_angles,
 )
 
 from torch_geometric.data import Data
@@ -142,7 +143,7 @@ class Herwig(LightningDataModule):
 
         new_inputs = boost(org_inputs)
 
-        phi, theta = self._get_angles(new_inputs[:, -4:])
+        phi, theta = get_angles(new_inputs[:, -4:])
         theta = theta + math.pi * (theta < 0)
 
         true_hadron_angles = np.stack([phi, theta], axis=1)
@@ -151,7 +152,7 @@ class Herwig(LightningDataModule):
         true_hadron_angles = torch.from_numpy(true_hadron_angles.astype(np.float32))
         true_hadron_momenta = torch.from_numpy(org_inputs[:, -8:])
 
-        q_phi, q_theta = self._get_angles(new_inputs[:, 4:8])
+        q_phi, q_theta = get_angles(new_inputs[:, 4:8])
         q_momenta = np.stack([q_phi, q_theta], axis=1)
         cond_info = np.concatenate([org_inputs[:, :4], q1_types, q2_types, q_momenta], axis=1)
         # cond_info_prescaler = MinMaxScaler((-1, 1))
@@ -199,16 +200,6 @@ class Herwig(LightningDataModule):
         h1_types = h1_types[mask]
         h2_types = h2_types[mask]
         return event_labels, q1_types, q2_types, h1_types, h2_types, org_inputs
-
-    @staticmethod
-    def _get_angles(four_vector):
-        _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
-        pT = np.sqrt(px**2 + py**2)
-        phi = np.arctan(px / py)
-        theta = np.arctan(pT / pz)
-        # phi = np.sign(px) * np.arcsin(py / pT) + (1 - np.sign(px)) * np.sign(py) * np.pi / 2
-        # theta = np.arcsin(pT / np.sqrt(pz**2 + pT**2))
-        return phi, theta
 
     def _load_dataset(self, fname):
         load_from_cache = False
@@ -417,13 +408,6 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
 
         new_inputs = boost(org_inputs)
 
-        def get_angles(four_vector):
-            _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
-            pT = np.sqrt(px**2 + py**2)
-            phi = np.arctan(px / py)
-            theta = np.arctan(pT / pz)
-            return phi, theta
-
         out_4vec = new_inputs[:, -4:]
         _, px, py, pz = [out_4vec[:, idx] for idx in range(4)]
         pT = np.sqrt(px**2 + py**2)
@@ -523,13 +507,6 @@ class HerwigClusterDataset(TorchDataset, HyperparametersMixin):
                     org_inputs = np.concatenate([cluster, h1, h2], axis=1)
 
                 new_inputs = np.array([boost(row) for row in org_inputs])
-
-                def get_angles(four_vector):
-                    _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
-                    pT = np.sqrt(px**2 + py**2)
-                    phi = np.arctan(px / py)
-                    theta = np.arctan(pT / pz)
-                    return phi, theta
 
                 out_4vec = new_inputs[:, -4:]
                 _, px, py, pz = [out_4vec[:, idx] for idx in range(4)]
@@ -679,5 +656,117 @@ class HerwigEventDataset(InMemoryDataset):
             ptypes=torch.from_numpy(
                 np.concatenate([h1_type_indices, h2_type_indices], axis=1)
             ).long(),
+        )
+        return data
+
+
+class HerwigEventMultiHadronDataset(InMemoryDataset):
+    def __init__(
+        self,
+        root,
+        transform=None,
+        pre_transform=None,
+        pre_filter=None,
+        raw_file_list=None,
+        processed_file_name="herwig_graph_data.pt",
+    ):
+
+        self.raw_file_list = []
+        for pattern in raw_file_list:
+            self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
+        self.raw_file_list = [
+            os.path.basename(raw_file) for raw_file in self.raw_file_list
+        ]
+        self.processed_file_name = processed_file_name
+
+        if root:
+            pids_map_path = os.path.join(root, pid_map_fname)
+        if os.path.exists(pids_map_path):
+            print("Loading existing pids map: ", pids_map_path)
+            self.pids_to_ix = pickle.load(open(pids_map_path, "rb"))
+        else:
+            raise RuntimeError("No pids map found at", pids_map_path)
+
+        super().__init__(root, transform, pre_transform, pre_filter)
+
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        if self.raw_file_list is not None:
+            return self.raw_file_list
+        return ["ClusterTo2Pi0_new.dat"]
+
+    @property
+    def processed_file_names(self):
+        return [self.processed_file_name]
+
+    def download(self):
+        pass
+
+    def process(self):
+        all_data = []
+        for raw_path in self.raw_paths:
+            with open(raw_path) as f:
+                data_list = [self._create_data(line) for line in f if line.strip()]
+
+            if self.pre_filter is not None:
+                data_list = [data for data in data_list if self.pre_filter(data)]
+
+            if self.pre_transform is not None:
+                data_list = [self.pre_transform(data) for data in data_list]
+
+            all_data += data_list
+
+        data, slices = self.collate(all_data)
+        torch.save((data, slices), self.processed_paths[0])
+
+    def _create_data(self, line):
+        items = line.split("|")[:-1]
+        clusters = [pd.Series(c.split(";")[:-1]).str.split(',', expand=True) for c in items]
+
+        q1s, q2s, cs, hadrons, cluster_labels, cs_for_hadrons = [], [], [], [], [], []
+        for i, cluster in enumerate(clusters):
+            # select the two quarks and the cluster /heavy cluster from the cluster
+            q1 = cluster.iloc[0].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
+            q2 = cluster.iloc[1].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
+            c = cluster.iloc[2].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
+            q1s.append(q1)
+            q2s.append(q2)
+            cs.append(c)
+            # select the final states from the cluster
+            hadron = cluster[cluster[2] == '[ ]'].to_numpy()[:, [1,3,4,5,6]].astype(float)
+            hadrons.append(hadron)
+            # assign cluster label to all hadrons
+            cluster_labels += [i] * len(hadron)
+            c_for_hadrons = c.repeat(len(hadron), axis=0)
+            cs_for_hadrons.append(c_for_hadrons)
+        # concatenate all clusters
+        q1s = np.concatenate(q1s)
+        q2s = np.concatenate(q2s)
+        cs = np.concatenate(cs)
+        hadrons = np.concatenate(hadrons)
+        cs_for_hadrons = np.concatenate(cs_for_hadrons)
+        cond_kin = np.concatenate([cs[:, [1,2,3,4]], q1s[:, [1,2,3,4]], q2s[:, [1,2,3,4]]], axis=1)
+        had_kin = np.concatenate([cs_for_hadrons[:, [1,2,3,4]], hadrons[:, [1,2,3,4]]], axis=1)
+        cond_kin_rest_frame = boost(cond_kin)
+        had_kin_rest_frame = torch.from_numpy(boost(had_kin)[:, 4:])
+
+        q_phi, q_theta = get_angles(cond_kin_rest_frame[:, 4:8])
+        q_momenta = np.stack([q_phi, q_theta], axis=1)
+        cond_info = np.concatenate([cs[:, [1,2,3,4]], q1s[:, :1], q2s[:, :1], q_momenta], axis=1)
+        cond_info = torch.from_numpy(cond_info.astype(np.float32))
+
+        # convert particle IDs to indices
+        # then these indices can be embedded in N dim. space
+        had_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(hadrons[:, [0]].astype(np.int16)))
+
+        data = Data(
+            x=cond_info.float(),
+            had_kin_rest_frame=had_kin_rest_frame.float(),
+            had_kin=torch.from_numpy(had_kin).float(),
+            had_type_indices=had_type_indices,
+            cluster_labels=torch.tensor(cluster_labels).int(),
+            edge_index=None,
         )
         return data

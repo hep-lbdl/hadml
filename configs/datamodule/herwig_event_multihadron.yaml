@@ -1,0 +1,22 @@
+_target_: hadml.datamodules.gan_datamodule.EventGANDataModule
+batch_size: 1
+num_workers: 1
+pin_memory: False
+train_val_test_split: [5, 2, 3]
+frac_data_used:
+cond_dataset:
+  _target_: hadml.datamodules.components.herwig.HerwigEventMultiHadronDataset
+  root: ${paths.data_dir}Herwig/
+  raw_file_list:
+    # - "ClusterTo2Pi0_new.dat"
+    - "AllClusters_paper4.dat"
+  processed_file_name: "herwig_multihadron_graph_cond_data.pt"
+
+obs_dataset:
+  _target_: hadml.datamodules.components.herwig.HerwigEventMultiHadronDataset
+  root: ${paths.data_dir}Herwig/
+  raw_file_list:
+    # - "ClusterTo2Pi0_S112*.dat"
+    - "AllClusters_paper4.dat"
+  # processed_file_name: "herwig_graph_obs_data.pt"
+  processed_file_name: "herwig_multihadron_graph_obs_data_variation.pt"

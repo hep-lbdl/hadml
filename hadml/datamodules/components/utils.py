@@ -125,6 +125,16 @@ def inv_boost(a_row: np.ndarray):
     return np.concatenate(a_row[:, :4] + results, axis=1)
 
 
+def get_angles(four_vector):
+    _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
+    pT = np.sqrt(px**2 + py**2)
+    phi = np.arctan(px / py)
+    theta = np.arctan(pT / pz)
+    # phi = np.sign(px) * np.arcsin(py / pT) + (1 - np.sign(px)) * np.sign(py) * np.pi / 2
+    # theta = np.arcsin(pT / np.sqrt(pz**2 + pT**2))
+    return phi, theta
+
+
 # <TODO> Use different scaler methods
 class InputScaler:
     def __init__(self, feature_range=(-0.99999, 0.99999)):
