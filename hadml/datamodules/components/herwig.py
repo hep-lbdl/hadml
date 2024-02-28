@@ -751,6 +751,7 @@ class HerwigEventMultiHadronDataset(InMemoryDataset):
         had_kin = np.concatenate([cs_for_hadrons[:, [1,2,3,4]], hadrons[:, [1,2,3,4]]], axis=1)
         cond_kin_rest_frame = boost(cond_kin)
         had_kin_rest_frame = torch.from_numpy(boost(had_kin)[:, 4:])
+        had_kin = torch.from_numpy(had_kin[:, 4:])
 
         q_phi, q_theta = get_angles(cond_kin_rest_frame[:, 4:8])
         q_momenta = np.stack([q_phi, q_theta], axis=1)
@@ -764,7 +765,7 @@ class HerwigEventMultiHadronDataset(InMemoryDataset):
         data = Data(
             x=cond_info.float(),
             had_kin_rest_frame=had_kin_rest_frame.float(),
-            had_kin=torch.from_numpy(had_kin).float(),
+            had_kin=had_kin.float(),
             had_type_indices=had_type_indices,
             cluster_labels=torch.tensor(cluster_labels).int(),
             edge_index=None,
