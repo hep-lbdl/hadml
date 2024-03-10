@@ -1,4 +1,5 @@
 import pyrootutils
+import wandb
 
 root = pyrootutils.setup_root(
     search_from=__file__,
@@ -45,7 +46,7 @@ OmegaConf.register_new_resolver("sum", lambda x, y: x + y)
 OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
 
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
 
 from hadml import utils
 
@@ -53,7 +54,7 @@ log = utils.get_pylogger(__name__)
 
 
 @utils.task_wrapper
-def train(cfg: DictConfig) -> Tuple[dict, dict]:
+def train(cfg: DictConfig, logger=None) -> Tuple[dict, dict]:
     """Trains the model. Can additionally evaluate on a testset, using best weights obtained during
     training.
 
@@ -75,13 +76,14 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
+    model: LightningModule = hydra.utils.instantiate(cfg.model, datamodule=datamodule)
 
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
 
-    log.info("Instantiating loggers...")
-    logger: List[LightningLoggerBase] = utils.instantiate_loggers(cfg.get("logger"))
+    if not logger:
+        log.info("Instantiating loggers...")
+        logger: List[LightningLoggerBase] = utils.instantiate_loggers(cfg.get("logger"))
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
@@ -136,6 +138,65 @@ def main(cfg: DictConfig) -> Optional[float]:
     # return optimized metric
     return metric_value
 
+@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
+def sweep(cfg: DictConfig) -> Optional[float]:
+    """Hyperparameter sweep example."""
+    init_sweep = not cfg.get("sweep_id")
+
+    if init_sweep:
+        sweep_configuration = {
+            "method": "bayes",
+            "metric": {"goal": "minimize", "name": "val/swd"},
+            "parameters": {
+                "r1_reg": {"max": 5000,
+                           "min": 1,
+                           'distribution': 'log_uniform_values'},
+                "lr": {"max": 0.005,
+                       "min": 0.00001,
+                       'distribution': 'log_uniform_values'},
+                "width":  {"values": [50, 100, 250, 500]},
+                "depth": {"max": 8, "min": 4},
+                "batch_size": {"values": [5000, 10000, 20000, 40000, 80000]},
+                "batch_norm_gen": {"values": [1, 2, 3]},
+                # "batch_norm_dis": {"values": [0, 1, 2]},
+                "noise_dim": {"values": [1, 16, 64]},
+                "num_critics": {"values": [1, 2, 3]},
+                "num_gen": {"values": [1, 2]},
+            },
+        }
+
+        sweep_id = wandb.sweep(sweep=sweep_configuration,
+                               entity=cfg.logger.wandb.entity,
+                              project=cfg.logger.wandb.project)
+        print(f"Sweep id: {sweep_id}")
+    else:
+        wandb.agent(cfg.sweep_id,
+                    function=lambda: train_wandb(cfg),
+                    count=2,
+                    entity=cfg.logger.wandb.entity,
+                    project=cfg.logger.wandb.project
+                    )
+
+    return None
+
+def train_wandb(cfg: DictConfig) -> None:
+    """Hyperparameter sweep example."""
+    logger = utils.instantiate_loggers(cfg.get("logger"))
+
+    cfg.model.r1_reg = wandb.config.r1_reg
+    cfg.model.optimizer_generator.lr = wandb.config.lr
+    cfg.model.optimizer_discriminator.lr = wandb.config.lr
+    cfg.model.generator.hidden_dims = wandb.config.depth * [wandb.config.width]
+    cfg.model.discriminator.hidden_dims = wandb.config.depth * [wandb.config.width]
+    cfg.model.num_critics = wandb.config.num_critics
+    cfg.model.num_gen = wandb.config.num_gen
+    cfg.datamodule.batch_size = wandb.config.batch_size
+    cfg.model.noise_dim = wandb.config.noise_dim
+    cfg.model.generator.batch_norm = wandb.config.batch_norm_gen
+    # cfg.model.discriminator.batch_norm = wandb.config.batch_norm_dis
+    train(cfg, logger=logger)
+
 
 if __name__ == "__main__":
     main()
+    # sweep()

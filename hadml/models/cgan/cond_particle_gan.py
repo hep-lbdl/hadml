@@ -61,6 +61,7 @@ class CondParticleGANModule(LightningModule):
         comparison_fn: Optional[Callable] = None,
         save_only_improved_plots: bool = False,
         outdir: Optional[str] = None,
+        datamodule: torch.nn.Module = None,
     ):
         super().__init__()
 
@@ -74,6 +75,7 @@ class CondParticleGANModule(LightningModule):
                 "discriminator_prescale",
                 "comparison_fn",
                 "criterion",
+                "datamodule",
             ],
         )
 
@@ -92,6 +94,7 @@ class CondParticleGANModule(LightningModule):
         self.r1_reg = r1_reg
         self.current_gumbel_temp = 1.0
         self.target_gumbel_temp = target_gumbel_temp
+        self.datamodule = datamodule
 
         # metric objects for calculating and averaging accuracy across batches
         self.train_loss_gen = MeanMetric()
@@ -268,7 +271,15 @@ class CondParticleGANModule(LightningModule):
             return self._generator_step(particle_type_data, x_generated)
 
     def _update_gumbel_temp(self):
-        progress = self.trainer.current_epoch / (self.trainer.max_epochs - 1)
+        if self.datamodule is not None:
+            progress = self.trainer.global_step / (
+                        0.8 * self.trainer.max_epochs * len(self.datamodule.train_dataloader()))
+        else:
+            progress = self.trainer.current_epoch / (self.trainer.max_epochs - 2)
+        if progress < 1.0:
+            progress = 1 - (1 - progress) ** 2
+        else:
+            progress = 1.0
         self.current_gumbel_temp = 1.0 - (1 - self.target_gumbel_temp) * progress
         self.log("gumbel", self.current_gumbel_temp)
 
@@ -278,12 +289,12 @@ class CondParticleGANModule(LightningModule):
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
+
         if not isinstance(self.embedding_module, OneHotEmbeddingModule):
             raise NotImplementedError("Embedding module must be `OneHotEmbeddingModule`.")
-        else:
-            particle_types = particle_types.reshape(
-                particle_kinematics.shape[0], -1
-            )
+        particle_types = particle_types.reshape(
+            particle_kinematics.shape[0], -1
+        )
 
         x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
         return particle_types, x_generated

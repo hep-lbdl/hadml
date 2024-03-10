@@ -25,9 +25,9 @@ tags: ["herwig", "allhadrons"]
 seed: 12345
 
 trainer:
-  max_epochs: 25
+  max_epochs: 4
   check_val_every_n_epoch: 1
-  val_check_interval: 0.5
+  val_check_interval: 0.1
 
 callbacks:
   model_checkpoint:
@@ -36,10 +36,10 @@ callbacks:
     mode: "min"
     save_top_k: 5
     save_last: True
-  
+
 ## override /datamodule:
 datamodule:
-  batch_size: 40_000
+  batch_size: 10_000
   pin_memory: True
   core_dataset:
     train_val_test_split: [ 0.97, 0.005, 0.025 ]
@@ -52,11 +52,11 @@ datamodule:
 
 ## override /model:
 model:
-  noise_dim: 64
+  noise_dim: 16
   # loss_type: "wasserstein" ## "wasserstein" or "bce" or "ls"
   loss_type: "bce"
   wasserstein_reg: 0.0
-  r1_reg: 200.0
+  r1_reg: 1500.0
 
   ## how often the optimizers will be used.
   num_critics: 1
@@ -64,13 +64,14 @@ model:
 
   generator:
     input_dim: ${eval:${model.noise_dim}+${model.cond_info_dim}}
-    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
+    hidden_dims: ${gen_list:100,4} # = [1000,] * 4
+    batch_norm: 2
 
   discriminator:
-    hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
+    hidden_dims: ${gen_list:100,4} # = [1000,] * 4
     dropout: 0
-  
-  
+    batch_norm: 0
+
   # criterion:
   #   __target__: torch.nn.BCELoss
   #   reduction: "mean"
