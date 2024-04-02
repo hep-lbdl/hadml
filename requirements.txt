@@ -1,16 +1,17 @@
 # --------- pytorch --------- #
-torch>=1.10.0
-torchvision>=0.11.0
-pytorch-lightning==1.8.1
-torchmetrics==0.10.0
+torch>=2.0
+torchvision
+lightning
+torchmetrics
+torch_geometric
 
 # --------- hydra --------- #
-hydra-core==1.2.0
-hydra-colorlog==1.2.0
-hydra-optuna-sweeper==1.2.0
+hydra-core>=1.2.0
+hydra-colorlog>=1.2.0
+hydra-optuna-sweeper>=1.2.0
 
 # --------- loggers --------- #
-# wandb
+wandb
 # neptune-client
 # mlflow
 # comet-ml
@@ -24,4 +25,14 @@ more_itertools
 pandas
 matplotlib
 pot
-# sh            # for running bash commands in some tests (linux/macos only)
+ruff
+
+# for python distribution
+build
+twine
+pytest-cov
+
+-f https://data.pyg.org/whl/torch-2.2.0+cu121.html
+pyg_lib
+torch_scatter
+torch-cluster

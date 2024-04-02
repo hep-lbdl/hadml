@@ -1,3 +1,43 @@
+[project]
+name = "hadml"
+version = "0.1.0"
+description = "Machine Learning for Hadronization"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+keywords = ["HEP", "Hadronization", "ML"]
+authors = [
+  {name = "X. Ju", email = "xju@lbl.gov" },
+  {name = "A. Kania", emmail = ""},
+  {name = "C.H Chan", email = "JayChan@lbl.gov"}
+]
+dependencies = [
+]
+
+[project.urls]
+Homepage = "https://github.com/hep-lbdl/hadml"
+Issues = "https://github.com/hep-lbdl/hadml/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+preview = true
+lint.select = ["ALL"]
+lint.ignore = [
+    "COM", "D100", "D101", "D102", "D103", "D104", "D105", "D205", "D401", "EM", "FIX", "FBT",
+    "S101", "S404", "S602", "PLR2004", "PLR0912", "PLR0913", "PLR0914", "PLR0915", "PLR0917",
+    "PLC0415", "G004", "PD901", "N802", "C901", "DTZ005", "DTZ007", "INP", "EXE002", "TD002",
+    "ANN001", "ANN002", "ANN003", "ANN101", "ANN201", "ANN202", "ANN204", "CPY001", "TRY003",
+    "N803", "N806", "N812", "T201", "PLW1514", "PTH123", "RUF015", "RUF017", "PLR6301", "ERA", "ISC001",
+    "RET504", "SLF001", "S403", "PLR1702", "UP035"
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
 [tool.pytest.ini_options]
 addopts = [
   "--color=yes",
