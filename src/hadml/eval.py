@@ -38,7 +38,7 @@ from typing import List, Tuple
 import hydra
 from omegaconf import DictConfig
 from pytorch_lightning import LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers.logger import Logger as LightningLoggerBase
 
 from hadml import utils
 
@@ -55,10 +55,10 @@ def evaluate(cfg: DictConfig) -> Tuple[dict, dict]:
     Args:
         cfg (DictConfig): Configuration composed by Hydra.
 
-    Returns:
+    Returns
+    -------
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
     """
-
     assert cfg.ckpt_path
 
     log.info(f"Instantiating datamodule <{cfg.datamodule._target_}>")

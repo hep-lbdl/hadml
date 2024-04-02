@@ -1,17 +1,18 @@
 import time
 import warnings
+from collections.abc import Iterable
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Callable, List, Iterable, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import hydra
 import numpy as np
 import torch
 from omegaconf import DictConfig
 from pytorch_lightning import Callback
-from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers.logger import Logger
 from pytorch_lightning.utilities import rank_zero_only
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from hadml.utils import pylogger, rich_utils
 
@@ -32,7 +33,6 @@ def task_wrapper(task_func: Callable) -> Callable:
     """
 
     def wrap(cfg: DictConfig):
-
         # apply extra utilities
         extras(cfg)
 
@@ -45,12 +45,8 @@ def task_wrapper(task_func: Callable) -> Callable:
             raise ex
         finally:
             path = Path(cfg.paths.output_dir, "exec_time.log")
-            content = (
-                f"'{cfg.task_name}' execution time: {time.time() - start_time} (s)"
-            )
-            save_file(
-                path, content
-            )  # save task execution time (even if exception occurs)
+            content = f"'{cfg.task_name}' execution time: {time.time() - start_time} (s)"
+            save_file(path, content)  # save task execution time (even if exception occurs)
             close_loggers()  # close loggers (even if exception occurs so multirun won't fail)
 
         log.info(f"Output dir: {cfg.paths.output_dir}")
@@ -68,7 +64,6 @@ def extras(cfg: DictConfig) -> None:
     - Setting tags from command line
     - Rich config printing
     """
-
     # return if no `extras` config
     if not cfg.get("extras"):
         log.warning("Extras config not found! <cfg.extras=null>")
@@ -116,9 +111,9 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:
     return callbacks
 
 
-def instantiate_loggers(logger_cfg: DictConfig) -> List[LightningLoggerBase]:
+def instantiate_loggers(logger_cfg: DictConfig) -> List[Logger]:
     """Instantiates loggers from config."""
-    logger: List[LightningLoggerBase] = []
+    logger: List[Logger] = []
 
     if not logger_cfg:
         log.warning("Logger config is empty.")
@@ -142,7 +137,6 @@ def log_hyperparameters(object_dict: dict) -> None:
     Additionally saves:
     - Number of model parameters
     """
-
     hparams = {}
 
     cfg = object_dict["cfg"]
@@ -181,7 +175,6 @@ def log_hyperparameters(object_dict: dict) -> None:
 
 def get_metric_value(metric_dict: dict, metric_name: str) -> float:
     """Safely retrieves value of the metric logged in LightningModule."""
-
     if not metric_name:
         log.info("Metric name is None! Skipping metric value retrieval...")
         return None
@@ -201,7 +194,6 @@ def get_metric_value(metric_dict: dict, metric_name: str) -> float:
 
 def close_loggers() -> None:
     """Makes sure all loggers closed properly (prevents logging failure during multirun)."""
-
     log.info("Closing loggers...")
 
     if find_spec("wandb"):  # if wandb is installed
@@ -217,14 +209,14 @@ def get_wasserstein_grad_penalty(
     real_inputs: Union[Iterable[torch.Tensor], torch.Tensor],
     fake_inputs: Union[Iterable[torch.Tensor], torch.Tensor],
 ):
-    """Gradient penalty from https://arxiv.org/abs/1704.00028"""
+    """Gradient penalty from https://arxiv.org/abs/1704.00028."""
     if isinstance(real_inputs, torch.Tensor):
         real_inputs = [real_inputs]
     if isinstance(fake_inputs, torch.Tensor):
         fake_inputs = [fake_inputs]
-    if (len(real_inputs) != len(fake_inputs)) or np.any(
-        [real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)]
-    ):
+    if (len(real_inputs) != len(fake_inputs)) or np.any([
+        real.shape != fake.shape for real, fake in zip(real_inputs, fake_inputs)
+    ]):
         raise ValueError("Inputs must match in length and shapes!")
 
     device = real_inputs[0].device
@@ -246,9 +238,7 @@ def get_wasserstein_grad_penalty(
     return gradient_penalty
 
 
-def get_r1_grad_penalty(
-    D: nn.Module, real_inputs: Union[Iterable[torch.Tensor], torch.Tensor]
-):
+def get_r1_grad_penalty(D: nn.Module, real_inputs: Union[Iterable[torch.Tensor], torch.Tensor]):
     """Gradient penalty from https://arxiv.org/abs/1801.04406"""
     if isinstance(real_inputs, torch.Tensor):
         real_inputs = [real_inputs]

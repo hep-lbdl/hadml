@@ -1,16 +1,15 @@
 import os
 
 import pytest
+from hadml.eval import evaluate
+from hadml.train import train
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import open_dict
 
-from hadml.eval import evaluate
-from hadml.train import train
 
-
-@pytest.mark.slow
+@pytest.mark.slow()
 def test_train_eval(tmp_path, cfg_train, cfg_eval):
-    """Train for 1 epoch with `train.py` and evaluate with `eval.py`"""
+    """Train for 1 epoch with `train.py` and evaluate with `eval.py`."""
     assert str(tmp_path) == cfg_train.paths.output_dir == cfg_eval.paths.output_dir
 
     with open_dict(cfg_train):

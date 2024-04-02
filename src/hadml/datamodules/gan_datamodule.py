@@ -1,14 +1,13 @@
-from typing import Any, Dict, Optional, Tuple, Protocol
+from typing import Any, Dict, Optional, Protocol, Tuple
 
 import torch
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
-
-from torch_geometric.loader import DataLoader as GeometricDataLoader
 from torch_geometric.data.dataset import Dataset as GeometricDataset
+from torch_geometric.loader import DataLoader as GeometricDataLoader
 
-from hadml.datamodules.components.utils import process_data_split, get_num_asked_events
+from hadml.datamodules.components.utils import get_num_asked_events, process_data_split
 
 
 class GANDataProtocol(Protocol):
@@ -16,11 +15,14 @@ class GANDataProtocol(Protocol):
 
     def prepare_data(self) -> None:
         """Prepare data for training and validation.
-        Before the create_dataset function is called."""
+        Before the create_dataset function is called.
+        """
 
     def create_dataset(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Create dataset from core dataset.
-        Returns:
+
+        Returns
+        -------
             torch.Tensor: conditioinal information
             torch.Tensor: particle kinematics
             torch.Tensor: particle types
@@ -105,7 +107,6 @@ class ParticleGANDataModule(LightningDataModule):
 
     def teardown(self, stage: Optional[str] = None):
         """Clean up after fit or test."""
-        pass
 
     def state_dict(self):
         """Extra things to save to checkpoint."""
@@ -113,7 +114,6 @@ class ParticleGANDataModule(LightningDataModule):
 
     def load_state_dict(self, state_dict: Dict[str, Any]):
         """Things to do when loading checkpoint."""
-        pass
 
 
 class EventGANDataModule(LightningDataModule):
@@ -164,12 +164,7 @@ class EventGANDataModule(LightningDataModule):
         with both `trainer.fit()` and `trainer.test()`
         so be careful not to execute things like random split twice!
         """
-        if (
-            not self.cond_data_train
-            and not self.cond_data_val
-            and not self.cond_data_test
-        ):
-
+        if not self.cond_data_train and not self.cond_data_val and not self.cond_data_test:
             (
                 self.cond_data_train,
                 self.cond_data_val,
@@ -181,7 +176,6 @@ class EventGANDataModule(LightningDataModule):
             )
 
         if not self.obs_data_train and not self.obs_data_val and not self.obs_data_test:
-
             (
                 self.obs_data_train,
                 self.obs_data_val,

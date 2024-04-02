@@ -1,8 +1,7 @@
 from typing import List
 
 import torch
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 
 
 def InvsBoost(
@@ -19,10 +18,10 @@ def InvsBoost(
         mass_1: rest mass of the first outgoing particle in GeV
         mass_2: rest mass of the second outgoing particle in GeV
 
-    Returns:
+    Returns
+    -------
         4 momentum of the two outgoing particles in the lab frame
     """
-
     device = cluster.device
 
     E0, p0 = cluster[:, 0:1], cluster[:, 1:]

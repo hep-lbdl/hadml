@@ -1,19 +1,16 @@
-import itertools
 import pickle
 from functools import reduce
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-
 from sklearn.preprocessing import MinMaxScaler
 
 GAN_INPUT_DATA_TYPE = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str]]
 
 
 def shuffle(array: np.ndarray):
-    from numpy.random import MT19937
-    from numpy.random import RandomState, SeedSequence
+    from numpy.random import MT19937, RandomState, SeedSequence
 
     np_rs = RandomState(MT19937(SeedSequence(123456789)))
     np_rs.shuffle(array)
@@ -23,8 +20,7 @@ def read_dataframe(filename, sep=",", engine=None):
     if type(filename) == list:
         print(filename)
         df_list = [
-            pd.read_csv(f, sep=sep, header=None, names=None, engine=engine)
-            for f in filename
+            pd.read_csv(f, sep=sep, header=None, names=None, engine=engine) for f in filename
         ]
         df = pd.concat(df_list, ignore_index=True)
         filename = filename[0]
@@ -55,7 +51,8 @@ def calculate_mass(lorentz_vector: np.ndarray) -> float:
     Args:
         lorentz_vector: 4 vector [E, px, py, pz]
 
-    Returns:
+    Returns
+    -------
         invariant mass
     """
     return (lorentz_vector**2 * np.array([1, -1, -1, -1])).sum(axis=1)
@@ -81,9 +78,7 @@ def create_boost_fn(cluster_4vec: np.ndarray):
         n_dot_p = np.sum((n * p), axis=1)
         E_prime = gamma * (E - v_mag * n_dot_p)
         P_prime = (
-            p
-            + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n
-            - (gamma * E * v_mag).reshape(-1, 1) * n
+            p + ((gamma - 1) * n_dot_p).reshape(-1, 1) * n - (gamma * E * v_mag).reshape(-1, 1) * n
         )
         return np.concatenate([E_prime.reshape(-1, 1), P_prime], axis=1)
 
@@ -104,8 +99,7 @@ def create_boost_fn(cluster_4vec: np.ndarray):
 
 
 def boost(a_row: np.ndarray):
-    """boost all particles to the rest frame of the first particle in the list"""
-
+    """Boost all particles to the rest frame of the first particle in the list"""
     assert a_row.shape[1] % 4 == 0, "a_row should be a 4-vector"
     boost_fn, _ = create_boost_fn(a_row[:, :4])
     n_particles = (a_row.shape[1]) // 4
@@ -114,19 +108,16 @@ def boost(a_row: np.ndarray):
 
 
 def inv_boost(a_row: np.ndarray):
-    """boost all particles to the rest frame of the first particle in the list"""
-
+    """Boost all particles to the rest frame of the first particle in the list"""
     assert a_row.shape[0] % 4 == 0, "a_row should be a 4-vector"
     _, inv_boost_fn = create_boost_fn(a_row[:, :4])
     n_particles = (a_row.shape[1]) // 4
-    results = [
-        inv_boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)
-    ]
+    results = [inv_boost_fn(a_row[:, 4 * x : 4 * (x + 1)]) for x in range(1, n_particles)]
     return np.concatenate(a_row[:, :4] + results, axis=1)
 
 
 def get_angles(four_vector):
-    _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
+    _, px, py, pz = (four_vector[:, idx] for idx in range(4))
     pT = np.sqrt(px**2 + py**2)
     phi = np.arctan(px / py)
     theta = np.arctan(pT / pz)
@@ -157,8 +148,8 @@ class InputScaler:
     def dump(self):
         print(
             "Min and Max for inputs: {",
-            ", ".join(["{:.6f}".format(x) for x in self.scaler.data_min_]),
-            ", ".join(["{:.6f}".format(x) for x in self.scaler.data_max_]),
+            ", ".join([f"{x:.6f}" for x in self.scaler.data_min_]),
+            ", ".join([f"{x:.6f}" for x in self.scaler.data_max_]),
             "}",
         )
 
@@ -201,15 +192,11 @@ def read(filename, max_evts=None, testing_frac=0.1) -> GAN_INPUT_DATA_TYPE:
     return (train_in, train_truth, test_in, test_truth, xlabels)
 
 
-def create_dataloader(
-    filename, batch_size, num_workers, max_evts=None, testing_frac=0.1
-):
+def create_dataloader(filename, batch_size, num_workers, max_evts=None, testing_frac=0.1):
     import torch
-    from torch.utils.data import TensorDataset, DataLoader
+    from torch.utils.data import DataLoader, TensorDataset
 
-    train_cond, train_truth, test_cond, test_truth, xlabels = read(
-        filename, max_evts, testing_frac
-    )
+    train_cond, train_truth, test_cond, test_truth, xlabels = read(filename, max_evts, testing_frac)
     train_cond = torch.from_numpy(train_cond)
     train_truth = torch.from_numpy(train_truth)
     test_cond = torch.from_numpy(test_cond)
@@ -233,9 +220,7 @@ def process_data_split(
     frac_data_used: Optional[float],
     train_val_test_split: Tuple[float, float, float],
 ):
-    split_by_count = reduce(
-        lambda prev, x: isinstance(x, int) and prev, train_val_test_split, True
-    )
+    split_by_count = reduce(lambda prev, x: isinstance(x, int) and prev, train_val_test_split, True)
 
     if split_by_count:
         if examples_used is not None or frac_data_used is not None:
@@ -245,13 +230,9 @@ def process_data_split(
         examples_used = sum(train_val_test_split)
     else:
         if not np.isclose(sum(train_val_test_split), 1.0):
-            raise ValueError(
-                "`train_val_test_split` must sum up to 1.0 when fractions are used"
-            )
+            raise ValueError("`train_val_test_split` must sum up to 1.0 when fractions are used")
         if frac_data_used is not None and examples_used is not None:
-            raise ValueError(
-                "Specify either `frac_data_used` or `examples_used` but not both!"
-            )
+            raise ValueError("Specify either `frac_data_used` or `examples_used` but not both!")
         if frac_data_used is not None and not (0 < frac_data_used <= 1.0):
             raise ValueError(
                 f"Fraction of data used must be in range (0, 1], but found {frac_data_used}"

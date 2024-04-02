@@ -1,12 +1,13 @@
-from typing import Optional, Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 import torch
 from pytorch_lightning import LightningModule
-from torchmetrics import MinMetric, MeanMetric
+from torchmetrics import MeanMetric, MinMetric
+
 
 class ParticleEmbeddingModule(LightningModule):
-    """Metric Learning. Embedding nodes into a vector space so that similar nodes are close together.
-    """
+    """Metric Learning. Embedding nodes into a vector space so that similar nodes are close together."""
+
     def __init__(
         self,
         net: torch.nn.Module,
@@ -34,7 +35,6 @@ class ParticleEmbeddingModule(LightningModule):
         self.test_min_loss.reset()
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int):
-
         _, _, x_type_indices = batch
         num_particles = x_type_indices.shape[1]
         type_encoding = [self.net(x_type_indices[:, idx]) for idx in range(num_particles)]

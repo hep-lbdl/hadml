@@ -1,19 +1,17 @@
 import math
 import os
-from typing import List, Tuple, Optional, Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib import ticker
 from pytorch_lightning.core.mixins import HyperparametersMixin
 
-import numpy as np
-import matplotlib.pyplot as plt
-
 from .image_converter import fig_to_array
 
+
 def create_plots(nrows, ncols):
-    fig, axs = plt.subplots(
-        nrows, ncols, figsize=(4 * ncols, 4 * nrows), constrained_layout=False
-    )
+    fig, axs = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows), constrained_layout=False)
     axs = axs.flatten()
     return fig, axs
 
@@ -53,27 +51,28 @@ class CompareParticles(HyperparametersMixin):
             outname = None
 
         needed_plot_count = self.hparams.num_kinematics * (1 + self.hparams.num_particle_ids)
-        plot_row_count = math.ceil(needed_plot_count ** 0.5)
+        plot_row_count = math.ceil(needed_plot_count**0.5)
         plot_col_count = math.ceil(needed_plot_count / plot_row_count)
         fig, axs = create_plots(plot_row_count, plot_col_count)
         axs = axs.reshape(-1, 2)
         self._plot_kinematics(predictions, truths, xbins, xlabels, xranges, fig, axs[0, :])
 
         for i in range(self.hparams.num_particle_ids):
-            sim_particle_types = (predictions[:, self.hparams.num_kinematics:] == i).sum(-1) > 0
-            true_particle_types = (truths[:, self.hparams.num_kinematics:] == i).sum(-1) > 0
+            sim_particle_types = (predictions[:, self.hparams.num_kinematics :] == i).sum(-1) > 0
+            true_particle_types = (truths[:, self.hparams.num_kinematics :] == i).sum(-1) > 0
             predictions_i = predictions[sim_particle_types]
             truths_i = truths[true_particle_types]
             xlabels_i = [l + f" [pid={i}]" for l in xlabels]
-            self._plot_kinematics(predictions_i, truths_i, xbins,
-                                  xlabels_i, xranges, fig, axs[1 + i, :])
+            self._plot_kinematics(
+                predictions_i, truths_i, xbins, xlabels_i, xranges, fig, axs[1 + i, :]
+            )
 
         if outname is not None:
             plt.savefig(outname + "-angles.png")
             plt.savefig(outname + "-angles.pdf")
 
         # convert the image to a numpy array
-        out_images[f"particle kinematics"] = fig_to_array(fig)
+        out_images["particle kinematics"] = fig_to_array(fig)
         plt.close("all")
 
         config = dict(alpha=0.5, lw=2, density=True)
@@ -141,10 +140,9 @@ class CompareParticles(HyperparametersMixin):
                 label="Generator",
                 **config,
             )
-            ax.set_xlabel(r"{}".format(xlabels[idx]))
+            ax.set_xlabel(rf"{xlabels[idx]}")
             ax.set_ylim(0, max_y)
             ax.legend()
-
 
     @staticmethod
     def set_hist_log_scale(ax, patches, bin_heights):
@@ -170,10 +168,8 @@ class CompareParticles(HyperparametersMixin):
             patch.set_y(ylim_bot)
 
         minor_ticks = []
-        for i in range(0, -int(np.floor(ylim_bot))):
-            minor_ticks += [
-                np.log10(10 ** (-i) - j / 10 ** (i + 1)) for j in range(1, 9)
-            ]
+        for i in range(-int(np.floor(ylim_bot))):
+            minor_ticks += [np.log10(10 ** (-i) - j / 10 ** (i + 1)) for j in range(1, 9)]
         ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
         ax.yaxis.set_minor_locator(ticker.FixedLocator(minor_ticks))
 
@@ -223,14 +219,16 @@ class CompareParticlesEventGan(HyperparametersMixin):
             ax = axs[idx]
             max_y = 0
             if len(angles_truths) > 0:
-                yvals, _, _ = ax.hist(angles_truths[:, idx], bins=xbin,
-                                      range=xrange, label='Truth', **config)
+                yvals, _, _ = ax.hist(
+                    angles_truths[:, idx], bins=xbin, range=xrange, label="Truth", **config
+                )
                 max_y = np.max(yvals)
-            yvals, _, _ = ax.hist(angles_predictions[:, idx], bins=xbin,
-                                  range=xrange, label='Generator', **config)
+            yvals, _, _ = ax.hist(
+                angles_predictions[:, idx], bins=xbin, range=xrange, label="Generator", **config
+            )
             max_y = max(max_y, np.max(yvals)) * 1.1
 
-            ax.set_xlabel(r"{}".format(xlabels[idx]))
+            ax.set_xlabel(rf"{xlabels[idx]}")
             ax.set_ylim(0, max_y * 1.1)
             ax.legend()
 
@@ -251,7 +249,7 @@ class CompareParticlesEventGan(HyperparametersMixin):
                 label="Generator",
                 **config,
             )
-            ax.set_xlabel(r"{}".format(xlabels[idx + 2]))
+            ax.set_xlabel(rf"{xlabels[idx + 2]}")
             ax.set_ylim(0, max_y)
             ax.legend()
 

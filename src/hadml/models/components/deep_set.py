@@ -1,8 +1,6 @@
 from typing import List, Optional
 
-import torch.nn as nn
-from torch import Tensor
-
+from torch import Tensor, nn
 from torch_scatter import scatter_mean
 
 from hadml.models.components.mlp import MLPModule

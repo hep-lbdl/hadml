@@ -1,13 +1,12 @@
 """Utility functions for logging media to TensorBoard or WandB."""
 
-from typing import List, Any
-from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
-import pytorch_lightning as pl
+from typing import Any, List
 
-def log_images(
-        logger: pl.loggers.logger.Logger,
-        key: str,
-        images: List[Any], **kwags: Any) -> None:
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+
+
+def log_images(logger: pl.loggers.logger.Logger, key: str, images: List[Any], **kwags: Any) -> None:
     """Log images to TensorBoard or WandB.
     For TensorBoard:
         images (torch.Tensor, numpy.ndarray, or string/blobname)
@@ -28,4 +27,4 @@ def log_images(
         logger.log_image(key, images=images, **kwags)
 
     else:
-        raise TypeError(f'Expected a TensorBoardLogger or WandbLogger, found {type(logger)}')
+        raise TypeError(f"Expected a TensorBoardLogger or WandbLogger, found {type(logger)}")

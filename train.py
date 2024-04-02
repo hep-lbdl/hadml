@@ -1,59 +1,24 @@
-import pyrootutils
-
-root = pyrootutils.setup_root(
-    search_from=__file__,
-    indicator=[".git", "pyproject.toml"],
-    pythonpath=True,
-    dotenv=True,
-)
-
-# ------------------------------------------------------------------------------------ #
-# `pyrootutils.setup_root(...)` is an optional line at the top of each entry file
-# that helps to make the environment more robust and convenient
-#
-# the main advantages are:
-# - allows you to keep all entry files in "src/" without installing project as a package
-# - makes paths and scripts always work no matter where is your current work dir
-# - automatically loads environment variables from ".env" file if exists
-#
-# how it works:
-# - the line above recursively searches for either ".git" or "pyproject.toml" in present
-#   and parent dirs, to determine the project root dir
-# - adds root dir to the PYTHONPATH (if `pythonpath=True`), so this file can be run from
-#   any place without installing project as a package
-# - sets PROJECT_ROOT environment variable which is used in "configs/paths/default.yaml"
-#   to make all paths always relative to the project root
-# - loads environment variables from ".env" file in root dir (if `dotenv=True`)
-#
-# you can remove `pyrootutils.setup_root(...)` if you:
-# 1. either install project as a package or move each entry file to the project root dir
-# 2. simply remove PROJECT_ROOT variable from paths in "configs/paths/default.yaml"
-# 3. always run entry files from the project root dir
-#
-# https://github.com/ashleve/pyrootutils
-# ------------------------------------------------------------------------------------ #
-
-from typing import List, Optional, Tuple
+import operator
+from typing import TYPE_CHECKING, Optional
 
 import hydra
+import pyrootutils
 import pytorch_lightning as pl
-
-from omegaconf import DictConfig
-from omegaconf import OmegaConf
-OmegaConf.register_new_resolver("eval", eval)
-OmegaConf.register_new_resolver("sum", lambda x, y: x + y)
-OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
-
+from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import LightningLoggerBase
 
 from hadml import utils
 
-log = utils.get_pylogger(__name__)
+if TYPE_CHECKING:
+    from pytorch_lightning.loggers.logger import Logger as LightningLoggerBase
 
+log = utils.get_pylogger(__name__)
+OmegaConf.register_new_resolver("eval", eval)
+OmegaConf.register_new_resolver("sum", operator.add)
+OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
 
 @utils.task_wrapper
-def train(cfg: DictConfig) -> Tuple[dict, dict]:
+def train(cfg: DictConfig) -> tuple[dict, dict]:
     """Trains the model. Can additionally evaluate on a testset, using best weights obtained during
     training.
 
@@ -63,10 +28,10 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     Args:
         cfg (DictConfig): Configuration composed by Hydra.
 
-    Returns:
+    Returns
+    -------
         Tuple[dict, dict]: Dict with metrics and dict with all instantiated objects.
     """
-
     # set seed for random number generators in pytorch, numpy and python.random
     if cfg.get("seed"):
         pl.seed_everything(cfg.seed, workers=True)
@@ -78,10 +43,10 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     model: LightningModule = hydra.utils.instantiate(cfg.model)
 
     log.info("Instantiating callbacks...")
-    callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
+    callbacks: list[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
 
     log.info("Instantiating loggers...")
-    logger: List[LightningLoggerBase] = utils.instantiate_loggers(cfg.get("logger"))
+    logger: list[LightningLoggerBase] = utils.instantiate_loggers(cfg.get("logger"))
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: Trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
@@ -122,9 +87,15 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
     return metric_dict, object_dict
 
 
+root = pyrootutils.setup_root(
+    search_from=__file__,
+    indicator=[".git", "pyproject.toml"],
+    pythonpath=True,
+    dotenv=True,
+)
+
 @hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
-
     # train the model
     metric_dict, _ = train(cfg)
 

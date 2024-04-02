@@ -1,11 +1,11 @@
-from typing import Any, List, Optional, Dict, Callable, Tuple
 import os
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 from pytorch_lightning import LightningModule
 from scipy import stats
-from torchmetrics import MinMetric, MeanMetric
-import numpy as np
+from torchmetrics import MeanMetric, MinMetric
 
 from hadml.metrics.media_logger import log_images
 from hadml.models.components.transform import InvsBoost
@@ -22,7 +22,8 @@ class CondEventGANModule(LightningModule):
 
     Have not considered the particle types for now.
 
-    Parameters:
+    Parameters
+    ----------
         noise_dim: dimension of noise vector
         generator: generator network
         discriminator: discriminator network
@@ -91,9 +92,7 @@ class CondEventGANModule(LightningModule):
     def forward(
         self, cond_info: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        noise = torch.randn(
-            len(cond_info), self.hparams.noise_dim, device=cond_info.device
-        )
+        noise = torch.randn(len(cond_info), self.hparams.noise_dim, device=cond_info.device)
         cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         fakes = self.generator(x_fake)
@@ -101,12 +100,8 @@ class CondEventGANModule(LightningModule):
         return fakes
 
     def configure_optimizers(self):
-        opt_gen = self.hparams.optimizer_generator(
-            params=self.generator.parameters()
-        )  # type: ignore
-        opt_disc = self.hparams.optimizer_discriminator(
-            params=self.discriminator.parameters()
-        )  # type: ignore
+        opt_gen = self.hparams.optimizer_generator(params=self.generator.parameters())  # type: ignore
+        opt_disc = self.hparams.optimizer_discriminator(params=self.discriminator.parameters())  # type: ignore
 
         # define schedulers
         if self.hparams.scheduler_generator is not None:
@@ -237,9 +232,7 @@ class CondEventGANModule(LightningModule):
         observed_event_label = observed_event_label.cpu().detach().numpy()
 
         distances = [
-            stats.wasserstein_distance(
-                hadrons_predictions[:, idx], hadrons_truths[:, idx]
-            )
+            stats.wasserstein_distance(hadrons_predictions[:, idx], hadrons_truths[:, idx])
             for idx in range(4)
         ]
         wd_distance = sum(distances) / len(distances)
@@ -344,26 +337,18 @@ class CondEventGANModule(LightningModule):
                 generated_event_label = (
                     perf["generated_event_label"]
                     if len(generated_event_label) == 0
-                    else np.concatenate(
-                        (
-                            generated_event_label,
-                            perf["generated_event_label"]
-                            + generated_event_label[-1]
-                            + 1,
-                        )
-                    )
+                    else np.concatenate((
+                        generated_event_label,
+                        perf["generated_event_label"] + generated_event_label[-1] + 1,
+                    ))
                 )
                 observed_event_label = (
                     perf["observed_event_label"]
                     if len(observed_event_label) == 0
-                    else np.concatenate(
-                        (
-                            observed_event_label,
-                            perf["observed_event_label"]
-                            + observed_event_label[-1]
-                            + 1
-                        )
-                    )
+                    else np.concatenate((
+                        observed_event_label,
+                        perf["observed_event_label"] + observed_event_label[-1] + 1,
+                    ))
                 )
             self.compare(
                 angles_predictions,
@@ -374,22 +359,26 @@ class CondEventGANModule(LightningModule):
             )
         if self.current_epoch == 0:
             os.makedirs(self.hparams.outdir, exist_ok=True)
-            np.savez_compressed(os.path.join(self.hparams.outdir, "initial.npz"),
-                                angles_predictions=angles_predictions,
-                                angles_truths=angles_truths,
-                                hadrons_predictions=hadrons_predictions,
-                                hadrons_truths=hadrons_truths,
-                                generated_event_label=generated_event_label,
-                                observed_event_label=observed_event_label)
+            np.savez_compressed(
+                os.path.join(self.hparams.outdir, "initial.npz"),
+                angles_predictions=angles_predictions,
+                angles_truths=angles_truths,
+                hadrons_predictions=hadrons_predictions,
+                hadrons_truths=hadrons_truths,
+                generated_event_label=generated_event_label,
+                observed_event_label=observed_event_label,
+            )
         if self.current_epoch == self.trainer.max_epochs - 1:
             os.makedirs(self.hparams.outdir, exist_ok=True)
-            np.savez_compressed(os.path.join(self.hparams.outdir, "final.npz"),
-                                angles_predictions=angles_predictions,
-                                angles_truths=angles_truths,
-                                hadrons_predictions=hadrons_predictions,
-                                hadrons_truths=hadrons_truths,
-                                generated_event_label=generated_event_label,
-                                observed_event_label=observed_event_label)
+            np.savez_compressed(
+                os.path.join(self.hparams.outdir, "final.npz"),
+                angles_predictions=angles_predictions,
+                angles_truths=angles_truths,
+                hadrons_predictions=hadrons_predictions,
+                hadrons_truths=hadrons_truths,
+                generated_event_label=generated_event_label,
+                observed_event_label=observed_event_label,
+            )
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
@@ -442,26 +431,18 @@ class CondEventGANModule(LightningModule):
             generated_event_label = (
                 perf["generated_event_label"]
                 if len(generated_event_label) == 0
-                else np.concatenate(
-                    (
-                        generated_event_label,
-                        perf["generated_event_label"]
-                        + generated_event_label[-1]
-                        + 1
-                    )
-                )
+                else np.concatenate((
+                    generated_event_label,
+                    perf["generated_event_label"] + generated_event_label[-1] + 1,
+                ))
             )
             observed_event_label = (
                 perf["observed_event_label"]
                 if len(observed_event_label) == 0
-                else np.concatenate(
-                    (
-                        observed_event_label,
-                        perf["observed_event_label"]
-                        + observed_event_label[-1]
-                        + 1
-                    )
-                )
+                else np.concatenate((
+                    observed_event_label,
+                    perf["observed_event_label"] + observed_event_label[-1] + 1,
+                ))
             )
         self.compare(
             angles_predictions,
@@ -472,11 +453,12 @@ class CondEventGANModule(LightningModule):
         )
 
         os.makedirs(self.hparams.outdir, exist_ok=True)
-        np.savez_compressed(os.path.join(self.hparams.outdir, "best.npz"),
-                            angles_predictions=angles_predictions,
-                            angles_truths=angles_truths,
-                            hadrons_predictions=hadrons_predictions,
-                            hadrons_truths=hadrons_truths,
-                            generated_event_label=generated_event_label,
-                            observed_event_label=observed_event_label)
-        
+        np.savez_compressed(
+            os.path.join(self.hparams.outdir, "best.npz"),
+            angles_predictions=angles_predictions,
+            angles_truths=angles_truths,
+            hadrons_predictions=hadrons_predictions,
+            hadrons_truths=hadrons_truths,
+            generated_event_label=generated_event_label,
+            observed_event_label=observed_event_label,
+        )

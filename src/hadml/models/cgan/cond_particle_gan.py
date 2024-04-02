@@ -1,28 +1,30 @@
-from typing import Any, List, Optional, Dict, Callable, Tuple
+import os
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+import ot
 import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule
-from torchmetrics import MinMetric, MeanMetric
 from torch.optim import Optimizer
-import ot
-import os
+from torchmetrics import MeanMetric, MinMetric
 
 from hadml.metrics.media_logger import log_images
+from hadml.models.components.mlp import OneHotEmbeddingModule
 from hadml.models.components.transform import InvsBoost
 from hadml.utils.utils import (
-    get_wasserstein_grad_penalty,
     conditional_cat,
-    get_r1_grad_penalty,
     get_one_hot,
+    get_r1_grad_penalty,
+    get_wasserstein_grad_penalty,
 )
-from hadml.models.components.mlp import OneHotEmbeddingModule
 
 
 class CondParticleGANModule(LightningModule):
     """Conditional GAN predicting particle momenta and types.
-    Parameters:
+
+    Parameters
+    ----------
         noise_dim: dimension of noise vector
         num_particle_ids: maximum number of particle types
         num_output_particles: number of outgoing particles
@@ -132,19 +134,15 @@ class CondParticleGANModule(LightningModule):
         else:
             particle_kinematics, particle_types = self._call_mlp_generator(x_fake)
         particle_kinematics = torch.tanh(particle_kinematics)
-        particle_types = F.gumbel_softmax(particle_types,
-                                          self.current_gumbel_temp)
+        particle_types = F.gumbel_softmax(particle_types, self.current_gumbel_temp)
         return particle_kinematics, particle_types
-
 
     def _call_mlp_particle_generator(
         self, x_fake: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.generator(x_fake)
 
-    def _call_mlp_generator(
-        self, x_fake: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _call_mlp_generator(self, x_fake: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         fakes = self.generator(x_fake)
         num_evts = x_fake.shape[0]
 
@@ -232,13 +230,11 @@ class CondParticleGANModule(LightningModule):
         elif loss_type == "bce":
             loss_disc = F.binary_cross_entropy_with_logits(
                 score_real, torch.ones_like(score_real)
-            ) + F.binary_cross_entropy_with_logits(
-                score_fake, torch.zeros_like(score_fake)
-            )
+            ) + F.binary_cross_entropy_with_logits(score_fake, torch.zeros_like(score_fake))
         elif loss_type == "ls":
-            loss_disc = 0.5 * ((score_real - 1) ** 2).mean(0).view(1) + 0.5 * (
-                score_fake**2
-            ).mean(0).view(1)
+            loss_disc = 0.5 * ((score_real - 1) ** 2).mean(0).view(1) + 0.5 * (score_fake**2).mean(
+                0
+            ).view(1)
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
         return loss_disc
@@ -255,9 +251,7 @@ class CondParticleGANModule(LightningModule):
         num_evts = x_momenta.shape[0]
         device = x_momenta.device
 
-        particle_type_data, x_generated = self._prepare_fake_batch(
-            cond_info, num_evts, device
-        )
+        particle_type_data, x_generated = self._prepare_fake_batch(cond_info, num_evts, device)
 
         if optimizer_idx == 0:
             return self._discriminator_step(
@@ -280,17 +274,12 @@ class CondParticleGANModule(LightningModule):
         particle_kinematics, particle_types = self(noise, cond_info)
         if not isinstance(self.embedding_module, OneHotEmbeddingModule):
             raise NotImplementedError("Embedding module must be `OneHotEmbeddingModule`.")
-        else:
-            particle_types = particle_types.reshape(
-                particle_kinematics.shape[0], -1
-            )
+        particle_types = particle_types.reshape(particle_kinematics.shape[0], -1)
 
         x_generated = conditional_cat(cond_info, particle_kinematics, dim=1)
         return particle_types, x_generated
 
-    def _generator_step(
-        self, particle_type_data: torch.Tensor, x_generated: torch.Tensor
-    ):
+    def _generator_step(self, particle_type_data: torch.Tensor, x_generated: torch.Tensor):
         # x_generated = self.discriminator_prescale(x_generated)
         score_fakes = self.discriminator(x_generated, particle_type_data).squeeze(-1)
         loss_gen = self._generator_loss(score_fakes)
@@ -315,9 +304,9 @@ class CondParticleGANModule(LightningModule):
         score_truth = self.discriminator(x_truth, x_type_data).squeeze(-1)
         # with fake batch
         # x_generated = self.discriminator_prescale(x_generated)
-        score_fakes = self.discriminator(
-            x_generated.detach(), particle_type_data.detach()
-        ).squeeze(-1)
+        score_fakes = self.discriminator(x_generated.detach(), particle_type_data.detach()).squeeze(
+            -1
+        )
         loss_disc = self._discriminator_loss(score_truth, score_fakes)
 
         r1_grad_penalty, wasserstein_grad_penalty = self._get_grad_penalties(
@@ -331,15 +320,11 @@ class CondParticleGANModule(LightningModule):
         self.train_loss_disc(loss_disc)
         self.log("lossD", loss_disc, prog_bar=True)
         if self.wasserstein_reg > 0:
-            self.log(
-                "wasserstein_grad_penalty", wasserstein_grad_penalty, prog_bar=True
-            )
+            self.log("wasserstein_grad_penalty", wasserstein_grad_penalty, prog_bar=True)
         if self.r1_reg > 0:
             self.log("r1_grad_penalty", r1_grad_penalty, prog_bar=True)
 
-    def _get_grad_penalties(
-        self, particle_type_data, x_generated, x_truth, x_type_data
-    ):
+    def _get_grad_penalties(self, particle_type_data, x_generated, x_truth, x_type_data):
         wasserstein_grad_penalty = 0.0
         if self.wasserstein_reg > 0:
             wasserstein_grad_penalty = (
@@ -368,7 +353,6 @@ class CondParticleGANModule(LightningModule):
 
     def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
         """Common steps for valiation and testing"""
-
         cond_info, x_angles, x_type_indices, x_momenta, event_labels = batch
         num_evts, _ = x_angles.shape
         scaled_cond_info = self.generator_prescale(cond_info)
@@ -411,20 +395,13 @@ class CondParticleGANModule(LightningModule):
                 [particle_angles.detach().cpu().numpy(), fake_output_particles],
                 axis=1,
             ),
-            np.concatenate(
-                [scaled_x_angles.detach().cpu().numpy(), true_output_particles], axis=1
-            ),
+            np.concatenate([scaled_x_angles.detach().cpu().numpy(), true_output_particles], axis=1),
             n_projections=100,
         )
 
         particle_angles = self.generator_postscale(particle_angles)
         particle_momenta = InvsBoost(cond_info[:, :4], particle_angles).reshape((-1, 4))
-        predictions = (
-            torch.cat([particle_angles, particle_type_idx], dim=1)
-            .cpu()
-            .detach()
-            .numpy()
-        )
+        predictions = torch.cat([particle_angles, particle_type_idx], dim=1).cpu().detach().numpy()
         truths = torch.cat([x_angles, x_type_indices], dim=1).cpu().detach().numpy()
 
         return {
@@ -436,7 +413,7 @@ class CondParticleGANModule(LightningModule):
             "particle_momenta": particle_momenta.cpu().detach().numpy(),
             "x_momenta": x_momenta.reshape((-1, 4)).cpu().detach().numpy(),
             "event_labels": event_labels.cpu().detach().numpy(),
-            "cond_info": cond_info.cpu().detach().numpy()
+            "cond_info": cond_info.cpu().detach().numpy(),
         }
 
     def compare(self, predictions, truths, x_momenta, particle_momenta, outname) -> None:
@@ -465,7 +442,6 @@ class CondParticleGANModule(LightningModule):
         return perf
 
     def validation_epoch_end(self, outputs: List[Any]):
-
         swd_distance = self.val_swd.compute()
         particle_swd = self.val_particle_swd.compute()
         kinematic_swd = self.val_kinematic_swd.compute()
@@ -474,9 +450,7 @@ class CondParticleGANModule(LightningModule):
         self.val_min_avg_particle_swd(particle_swd)
         self.val_min_avg_kinematic_swd(kinematic_swd)
         self.log("val/swd", swd_distance, on_step=False, on_epoch=True, prog_bar=True)
-        self.log(
-            "val/type_swd", particle_swd, on_step=False, on_epoch=True, prog_bar=True
-        )
+        self.log("val/type_swd", particle_swd, on_step=False, on_epoch=True, prog_bar=True)
         self.log(
             "val/kinematic_swd",
             kinematic_swd,
@@ -507,7 +481,6 @@ class CondParticleGANModule(LightningModule):
             or kinematic_swd <= self.val_kinematic_swd.compute()
             or particle_swd <= self.val_particle_swd.compute()
         ):
-
             predictions = []
             truths = []
             particle_momenta = []
@@ -521,9 +494,7 @@ class CondParticleGANModule(LightningModule):
                     else np.concatenate((predictions, perf["predictions"]))
                 )
                 truths = (
-                    perf["truths"]
-                    if len(truths) == 0
-                    else np.concatenate((truths, perf["truths"]))
+                    perf["truths"] if len(truths) == 0 else np.concatenate((truths, perf["truths"]))
                 )
                 particle_momenta = (
                     perf["particle_momenta"]
@@ -556,22 +527,26 @@ class CondParticleGANModule(LightningModule):
 
         if self.current_epoch == 0:
             os.makedirs(self.hparams.outdir, exist_ok=True)
-            np.savez_compressed(os.path.join(self.hparams.outdir, "initial.npz"),
-                                predictions=predictions,
-                                truths=truths,
-                                x_momenta=x_momenta,
-                                particle_momenta=particle_momenta,
-                                event_labels=event_labels,
-                                cond_info=cond_info)
+            np.savez_compressed(
+                os.path.join(self.hparams.outdir, "initial.npz"),
+                predictions=predictions,
+                truths=truths,
+                x_momenta=x_momenta,
+                particle_momenta=particle_momenta,
+                event_labels=event_labels,
+                cond_info=cond_info,
+            )
         if self.current_epoch == self.trainer.max_epochs - 1:
             os.makedirs(self.hparams.outdir, exist_ok=True)
-            np.savez_compressed(os.path.join(self.hparams.outdir, "final.npz"),
-                                predictions=predictions,
-                                truths=truths,
-                                x_momenta=x_momenta,
-                                particle_momenta=particle_momenta,
-                                event_labels=event_labels,
-                                cond_info=cond_info)
+            np.savez_compressed(
+                os.path.join(self.hparams.outdir, "final.npz"),
+                predictions=predictions,
+                truths=truths,
+                x_momenta=x_momenta,
+                particle_momenta=particle_momenta,
+                event_labels=event_labels,
+                cond_info=cond_info,
+            )
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
@@ -583,15 +558,12 @@ class CondParticleGANModule(LightningModule):
         return perf
 
     def test_epoch_end(self, outputs: List[Any]):
-
         swd_distance = self.test_swd.compute()
         particle_swd = self.test_particle_swd.compute()
         kinematic_swd = self.test_kinematic_swd.compute()
 
         self.log("test/swd", swd_distance, on_step=False, on_epoch=True, prog_bar=True)
-        self.log(
-            "test/type_swd", particle_swd, on_step=False, on_epoch=True, prog_bar=True
-        )
+        self.log("test/type_swd", particle_swd, on_step=False, on_epoch=True, prog_bar=True)
         self.log(
             "test/kinematic_swd",
             kinematic_swd,
@@ -617,9 +589,7 @@ class CondParticleGANModule(LightningModule):
                 else np.concatenate((predictions, perf["predictions"]))
             )
             truths = (
-                perf["truths"]
-                if len(truths) == 0
-                else np.concatenate((truths, perf["truths"]))
+                perf["truths"] if len(truths) == 0 else np.concatenate((truths, perf["truths"]))
             )
             particle_momenta = (
                 perf["particle_momenta"]
@@ -646,10 +616,12 @@ class CondParticleGANModule(LightningModule):
         self.compare(predictions, truths, x_momenta, particle_momenta, outname)
 
         os.makedirs(self.hparams.outdir, exist_ok=True)
-        np.savez_compressed(os.path.join(self.hparams.outdir, "best.npz"),
-                            predictions=predictions,
-                            truths=truths,
-                            x_momenta=x_momenta,
-                            particle_momenta=particle_momenta,
-                            event_labels=event_labels,
-                            cond_info=cond_info)
+        np.savez_compressed(
+            os.path.join(self.hparams.outdir, "best.npz"),
+            predictions=predictions,
+            truths=truths,
+            x_momenta=x_momenta,
+            particle_momenta=particle_momenta,
+            event_labels=event_labels,
+            cond_info=cond_info,
+        )

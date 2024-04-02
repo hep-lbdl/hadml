@@ -1,4 +1,5 @@
 """Multilayer Perceptron (MLP) module."""
+
 from typing import List, Optional, Tuple
 
 try:
@@ -7,8 +8,8 @@ except ImportError:
     from more_itertools import pairwise
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 def build_linear_layers(
@@ -20,7 +21,6 @@ def build_linear_layers(
     last_activation: Optional[torch.nn.Module] = None,
     leaky_ratio: float = 0.2,
 ) -> List[nn.Module]:
-
     layer_list = [
         torch.nn.Linear(input_dim, hidden_dims[0]),
         torch.nn.LeakyReLU(leaky_ratio),
@@ -84,9 +84,7 @@ class MLPParticleModule(nn.Module):
 
         # build the linear model
         self.encoder = nn.Sequential(
-            *build_linear_layers(
-                input_dim, hidden_dims, hidden_dims[-1], layer_norm, dropout
-            )
+            *build_linear_layers(input_dim, hidden_dims, hidden_dims[-1], layer_norm, dropout)
         )
         self.particle_type = nn.Sequential(
             *build_linear_layers(

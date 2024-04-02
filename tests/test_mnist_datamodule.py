@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pytest
 import torch
-
 from hadml.datamodules.mnist_datamodule import MNISTDataModule
 
 

@@ -32,7 +32,7 @@ lint.ignore = [
     "PLC0415", "G004", "PD901", "N802", "C901", "DTZ005", "DTZ007", "INP", "EXE002", "TD002",
     "ANN001", "ANN002", "ANN003", "ANN101", "ANN201", "ANN202", "ANN204", "CPY001", "TRY003",
     "N803", "N806", "N812", "T201", "PLW1514", "PTH123", "RUF015", "RUF017", "PLR6301", "ERA", "ISC001",
-    "RET504", "SLF001", "S403", "PLR1702"
+    "RET504", "SLF001", "S403", "PLR1702", "UP035"
 ]
 
 [tool.ruff.lint.pydocstyle]
