@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import ot
@@ -106,6 +108,7 @@ class CondParticleGANModule(LightningModule):
         self.val_min_avg_swd = MinMetric()
         self.val_min_avg_particle_swd = MinMetric()
         self.val_min_avg_kinematic_swd = MinMetric()
+        self.val_result_list = []
 
         self.test_swd = MeanMetric()
         self.test_particle_swd = MeanMetric()
@@ -119,14 +122,14 @@ class CondParticleGANModule(LightningModule):
         # check if generator is a particle MLP,
         # which produces particle kinematics and types in one go.
         # In MLP case, we need to split the output into two parts.
-        for name, module in self.generator.named_modules():
+        for name, _ in self.generator.named_modules():
             if "particle" in name:
                 self.use_particle_mlp = True
                 break
 
     def forward(
         self, noise: torch.Tensor, cond_info: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
         if self.use_particle_mlp:
@@ -139,10 +142,10 @@ class CondParticleGANModule(LightningModule):
 
     def _call_mlp_particle_generator(
         self, x_fake: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         return self.generator(x_fake)
 
-    def _call_mlp_generator(self, x_fake: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _call_mlp_generator(self, x_fake: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         fakes = self.generator(x_fake)
         num_evts = x_fake.shape[0]
 
@@ -257,9 +260,10 @@ class CondParticleGANModule(LightningModule):
             return self._discriminator_step(
                 cond_info, particle_type_data, x_generated, x_momenta, x_type_data
             )
-
         if optimizer_idx == 1:
             return self._generator_step(particle_type_data, x_generated)
+
+        raise ValueError(f"Unknown optimizer index: {optimizer_idx}")
 
     def _update_gumbel_temp(self):
         progress = self.trainer.current_epoch / (self.trainer.max_epochs - 1)
@@ -268,7 +272,7 @@ class CondParticleGANModule(LightningModule):
 
     def _prepare_fake_batch(
         self, cond_info: Optional[torch.Tensor], num_evts: int, device: torch.device
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         noise = self.generate_noise(num_evts).to(device)
 
         particle_kinematics, particle_types = self(noise, cond_info)
@@ -347,12 +351,8 @@ class CondParticleGANModule(LightningModule):
             )
         return r1_grad_penalty, wasserstein_grad_penalty
 
-    def training_epoch_end(self, outputs: List[Any]):
-        # `outputs` is a list of dicts returned from `training_step()`
-        pass
-
     def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
-        """Common steps for valiation and testing"""
+        """Common steps for valiation and testing."""
         cond_info, x_angles, x_type_indices, x_momenta, event_labels = batch
         num_evts, _ = x_angles.shape
         scaled_cond_info = self.generator_prescale(cond_info)
@@ -417,9 +417,11 @@ class CondParticleGANModule(LightningModule):
         }
 
     def compare(self, predictions, truths, x_momenta, particle_momenta, outname) -> None:
-        """Compare the generated events with the real ones
+        """Compare the generated events with the real ones.
+
         Parameters:
-            perf: dictionary from the step function
+        ----------
+            perf: dictionary from the step function.
         """
         if self.comparison_fn is not None:
             # compare the generated events with the real ones
@@ -432,16 +434,22 @@ class CondParticleGANModule(LightningModule):
                     caption=list(images.keys()),
                 )
 
-    def validation_step(self, batch: Any, batch_idx: int):
-        """Validation step"""
+    def validation_step(self, batch: Any, batch_idx: int) -> None:
+        """Validation step."""
         perf = self.step(batch, batch_idx)
         self.val_swd(perf["swd"])
         self.val_particle_swd(perf["particle_swd"])
         self.val_kinematic_swd(perf["kinematic_swd"])
+        self.val_result_list.append(perf)
 
-        return perf
+    def on_validation_epoch_start(self) -> None:
+        super().on_validation_epoch_start()
+        self.val_min_avg_swd.reset()
+        self.val_min_avg_particle_swd.reset()
+        self.val_kinematic_swd.reset()
+        self.val_result_list = []
 
-    def validation_epoch_end(self, outputs: List[Any]):
+    def on_validation_epoch_end(self):
         swd_distance = self.val_swd.compute()
         particle_swd = self.val_particle_swd.compute()
         kinematic_swd = self.val_kinematic_swd.compute()
@@ -471,10 +479,6 @@ class CondParticleGANModule(LightningModule):
             prog_bar=True,
         )
 
-        self.val_swd.reset()
-        self.val_particle_swd.reset()
-        self.val_kinematic_swd.reset()
-
         if (
             not self.hparams.save_only_improved_plots
             or swd_distance <= self.val_min_avg_swd.compute()
@@ -487,7 +491,7 @@ class CondParticleGANModule(LightningModule):
             x_momenta = []
             event_labels = []
             cond_info = []
-            for perf in outputs:
+            for perf in self.val_result_list:
                 predictions = (
                     perf["predictions"]
                     if len(predictions) == 0
@@ -557,7 +561,7 @@ class CondParticleGANModule(LightningModule):
 
         return perf
 
-    def test_epoch_end(self, outputs: List[Any]):
+    def test_epoch_end(self, outputs: list[Any]):
         swd_distance = self.test_swd.compute()
         particle_swd = self.test_particle_swd.compute()
         kinematic_swd = self.test_kinematic_swd.compute()

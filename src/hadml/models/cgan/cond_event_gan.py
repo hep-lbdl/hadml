@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -85,13 +87,14 @@ class CondEventGANModule(LightningModule):
         # for tracking best so far
         self.val_min_avg_wd = MinMetric()
         self.val_min_avg_nll = MinMetric()
+        self.val_result_list = []
 
         self.test_wd = MeanMetric()
         self.test_nll = MeanMetric()
 
     def forward(
         self, cond_info: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         noise = torch.randn(len(cond_info), self.hparams.noise_dim, device=cond_info.device)
         cond_info = self.generator_prescale(cond_info)
         x_fake = conditional_cat(cond_info, noise, dim=1)
@@ -203,10 +206,6 @@ class CondEventGANModule(LightningModule):
         self.log("lossD", loss_disc, prog_bar=True)
         return {"loss": loss_disc}
 
-    def training_epoch_end(self, outputs: List[Any]):
-        # `outputs` is a list of dicts returned from `training_step()`
-        pass
-
     def step(self, batch: Any, batch_idx: int) -> Dict[str, Any]:
         """Common steps for valiation and testing"""
         cluster = batch["cond_data"].cluster
@@ -257,9 +256,11 @@ class CondEventGANModule(LightningModule):
         hadrons_truth,
         outname,
     ) -> None:
-        """Compare the generated events with the real ones
-        Parameters:
-            perf: dictionary from the step function
+        """Compare the generated events with the real ones.
+
+        Parameters
+        ----------
+            perf: dictionary from the step function.
         """
         if self.comparison_fn is not None:
             # compare the generated events with the real ones
@@ -278,17 +279,20 @@ class CondEventGANModule(LightningModule):
                     caption=list(images.keys()),
                 )
 
-    def validation_step(self, batch: Any, batch_idx: int):
-        """Validation step"""
+    def on_validation_epoch_start(self) -> None:
+        super().on_validation_epoch_start()
+        self.val_result_list = []
+
+    def validation_step(self, batch: Any, batch_idx: int) -> None:
+        """Validation step."""
         perf = self.step(batch, batch_idx)
         wd_distance = perf["wd"]
         avg_nll = perf["nll"]
         self.val_wd(wd_distance)
         self.val_nll(avg_nll)
+        self.val_result_list.append(perf)
 
-        return perf
-
-    def validation_epoch_end(self, validation_step_outputs):
+    def on_validation_epoch_end(self):
         wd_distance = self.val_wd.compute()
         avg_nll = self.val_nll.compute()
         self.val_min_avg_wd(wd_distance)
@@ -312,7 +316,7 @@ class CondEventGANModule(LightningModule):
             hadrons_truths = []
             generated_event_label = []
             observed_event_label = []
-            for perf in validation_step_outputs:
+            for perf in self.val_result_list:
                 angles_predictions = (
                     perf["angles_preds"]
                     if len(angles_predictions) == 0
@@ -381,7 +385,7 @@ class CondEventGANModule(LightningModule):
             )
 
     def test_step(self, batch: Any, batch_idx: int):
-        """Test step"""
+        """Test step."""
         perf = self.step(batch, batch_idx)
         wd_distance = perf["wd"]
         avg_nll = perf["nll"]

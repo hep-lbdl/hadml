@@ -1,11 +1,16 @@
 from typing import Any, Dict, Optional, Protocol, Tuple
 
+import pytorch_lightning as pl
 import torch
 from pytorch_lightning import LightningDataModule
-from pytorch_lightning.trainer.supporters import CombinedLoader
 from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
 from torch_geometric.data.dataset import Dataset as GeometricDataset
 from torch_geometric.loader import DataLoader as GeometricDataLoader
+
+if pl.__version__ <= "2.0.0":
+    from pytorch_lightning.trainer.supporters import CombinedLoader
+else:
+    from lightning.pytorch.utilities.combined_loader import CombinedLoader
 
 from hadml.datamodules.components.utils import get_num_asked_events, process_data_split
 

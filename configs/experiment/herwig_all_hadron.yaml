@@ -69,30 +69,3 @@ model:
   discriminator:
     hidden_dims: ${gen_list:1000,4} # = [1000,] * 4
     dropout: 0
-  
-  
-  # criterion:
-  #   __target__: torch.nn.BCELoss
-  #   reduction: "mean"
-
-  # optimizer_generator:
-  #   lr: 0.000001
-
-  # optimizer_discriminator:
-  #   lr: 0.000005
-
-
-#   scheduler_generator:
-#   # _target_: torch.optim.lr_scheduler.ExponentialLR
-#   _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
-#   _partial_: true
-#   T_0: 1
-#   T_mult: 2
-#   eta_min: 0.00001
-
-# scheduler_discriminator:
-#   _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
-#   _partial_: true
-#   T_0: 1
-#   T_mult: 2
-#   eta_min: 0.0001

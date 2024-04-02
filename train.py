@@ -4,10 +4,12 @@ from typing import TYPE_CHECKING, Optional
 import hydra
 import pyrootutils
 import pytorch_lightning as pl
+import torch
+from hadml import utils
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 
-from hadml import utils
+torch.set_float32_matmul_precision("medium")
 
 if TYPE_CHECKING:
     from pytorch_lightning.loggers.logger import Logger as LightningLoggerBase
@@ -16,6 +18,7 @@ log = utils.get_pylogger(__name__)
 OmegaConf.register_new_resolver("eval", eval)
 OmegaConf.register_new_resolver("sum", operator.add)
 OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
+
 
 @utils.task_wrapper
 def train(cfg: DictConfig) -> tuple[dict, dict]:
@@ -94,7 +97,8 @@ root = pyrootutils.setup_root(
     dotenv=True,
 )
 
-@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
+
+@hydra.main(version_base="1.3", config_path=str(root / "configs"), config_name="train.yaml")
 def main(cfg: DictConfig) -> Optional[float]:
     # train the model
     metric_dict, _ = train(cfg)
