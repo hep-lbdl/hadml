@@ -25,3 +25,8 @@ pandas
 matplotlib
 pot
 # sh            # for running bash commands in some tests (linux/macos only)
+
+# for python distribution
+build
+twine
+pytest-cov
