@@ -628,7 +628,7 @@ class HerwigEventDataset(InMemoryDataset):
         else:
             org_inputs = np.concatenate([cluster, h1, h2], axis=1)
 
-        new_inputs = np.array([boost(row) for row in org_inputs])
+        new_inputs = boost(org_inputs)
 
         def get_angles(four_vector):
             _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
