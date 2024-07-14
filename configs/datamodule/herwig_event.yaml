@@ -9,11 +9,15 @@ cond_dataset:
   root: ${paths.data_dir}Herwig/
   raw_file_list:
     - "HadClSmrLight0_ClusterTo2Pi0_new.dat"
-  processed_file_name: "herwig_event_cond_10.pt"
+  processed_file_name: "herwig_event_cond.pt"
+
+  # transform:
+  #   _target_: hadml.transforms.common.OneHotEncode 
+  #   num_particles: 365
 
   transform:
-    _target_: hadml.transforms.common.IndexEmbedder
-    file: "/global/homes/v/vsangli/particle_embeddings/repo/particle_embeddings/saved/auto_a1/embeddings.npy"
+    _target_: hadml.transforms.common.CombinedEmbedder 
+    file: "/global/home/users/vsangli/hadml-ml4hep2/embeddings/CP_CAE_16/embeddings.npy"
     num_particles: 365
 
 obs_dataset:
@@ -21,9 +25,13 @@ obs_dataset:
   root: ${paths.data_dir}Herwig/
   raw_file_list:
     - "diff_flavor_ClusterTo2Pi0_new.dat"
-  processed_file_name: "herwig_event_obs_diffFlavor_10.pt"
+  processed_file_name: "herwig_event_obs_diffFlavor.pt"
+
+  # transform:
+  #   _target_: hadml.transforms.common.OneHotEncode 
+  #   num_particles: 365
 
   transform:
-    _target_: hadml.transforms.common.IndexEmbedder
-    file: "/global/homes/v/vsangli/particle_embeddings/repo/particle_embeddings/saved/auto_a1/embeddings.npy"
+    _target_: hadml.transforms.common.CombinedEmbedder
+    file: "/global/home/users/vsangli/hadml-ml4hep2/embeddings/CP_CAE_16/embeddings.npy"
     num_particles: 365

@@ -163,3 +163,6 @@ slurm*.out
 
 # Temp Scripts
 *.ipynb
+
+
+embeddings/*

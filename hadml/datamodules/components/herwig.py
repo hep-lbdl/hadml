@@ -494,8 +494,8 @@ class HerwigEventDataset(InMemoryDataset):
         def get_angles(four_vector):
             _, px, py, pz = [four_vector[:, idx] for idx in range(4)]
             pT = np.sqrt(px**2 + py**2)
-            phi = np.arctan(px / py)
-            theta = np.arctan(pT / pz)
+            phi = np.arctan(px / (py+1e-8))
+            theta = np.arctan(pT / (pz+1e-8))
             return phi, theta
 
         phi, theta = get_angles(new_inputs[:, -4:])
@@ -506,8 +506,24 @@ class HerwigEventDataset(InMemoryDataset):
 
         # convert particle IDs to indices
         # then these indices can be embedded in N dim. space
-        h1_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h1_types, -1))
-        h2_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(h2_types, -1))
+        h1_idx = np.vectorize(self.pids_to_ix.get)(h1_types, -1)
+        h2_idx = np.vectorize(self.pids_to_ix.get)(h2_types, -1)
+        # hadron_exist_filter = np.logical_or(np.isin(h1_idx, selected_pids), np.isin(h2_idx, selected_pids)).flatten()
+        # if not np.any(hadron_exist_filter):
+        #     return None
+
+        # angles = angles[hadron_exist_filter]
+        # hadrons = hadrons[hadron_exist_filter]
+        # cluster = cluster[hadron_exist_filter]
+        # h1_idx = h1_idx[hadron_exist_filter]
+        # h2_idx = h2_idx[hadron_exist_filter]
+        # h1_types = h1_types[hadron_exist_filter]
+        # h2_types = h2_types[hadron_exist_filter]
+
+        
+        # h1_type_indices = torch.from_numpy(h1_idx)
+        # h2_type_indices = torch.from_numpy(h2_idx)
+        
 
         data = Data(
             x=torch.from_numpy(angles).float(),
@@ -515,7 +531,13 @@ class HerwigEventDataset(InMemoryDataset):
             edge_index=None,
             cluster=torch.from_numpy(cluster).float(),
             ptypes=torch.from_numpy(
-                np.concatenate([h1_type_indices, h2_type_indices], axis=1)
+                np.concatenate([h1_idx, h2_idx], axis=1)
             ).long(),
+            hadron_pids=torch.from_numpy(
+                np.concatenate([h1_types, h2_types], axis=1)
+            ).float(),
         )
         return data
+
+selected_pids = [143, 142, 147, 148, 144, 141, 152, 151, 159, 134, 155, 138, 133, 160, 156, 137, 109, 188, 111, 186, 153, 240, 149, 140, 145, 234, 63, 237, 277, 278, 29, 279, 318, 0, 317, 319, 154, 310, 150, 146, 139, 60, 246, 57, 243, 5, 308, 241, 306, 132, 161, 136, 157, 62, 238, 235, 163, 104, 193, 164, 126, 108, 171, 189, 168, 129, 110, 187, 282, 26, 28, 280, 112, 194, 107, 103, 185, 314, 190, 312, 3, 1, 196, 101, 117, 177, 120, 180, 309, 191, 6, 106, 307, 305, 127, 170, 130, 167, 301, 42, 263, 264, 43, 300, 299, 10, 162, 131, 158, 239, 135, 181, 119, 178, 116, 292, 17, 291, 18, 236, 64, 233, 59, 247, 244, 56, 320, 25, 281, 27, 283, 179, 118, 176, 121, 258, 46, 48, 260, 165, 288, 102, 195, 21, 289, 9, 20, 8, 303, 302]
+selected_pids = np.array(selected_pids)

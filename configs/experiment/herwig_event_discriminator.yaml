@@ -19,20 +19,20 @@ defaults:
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
-task_name: herwigEventDisc_10_onlyPIDS
+task_name: herwigEventDisc_CP_CAE16OH
 tags: ["herwig", "Events"]
 
 logger:
   wandb:
     project: "herwigEventsDisc"
     tags: ["herwig", "Events"]
-    name: herwigEventDisc_10_onlyPIDS
-    group: "NewFlavor"
+    name: herwigEventDisc_CP_CAE16OH
+    group: "Reset"
 
 seed: 12345
 
 trainer:
-  max_epochs: 200
+  max_epochs: 300
   log_every_n_steps: 1
 
 callbacks:
@@ -44,10 +44,10 @@ callbacks:
   
 # ## override /datamodule:
 datamodule:
-  batch_size: 20000
+  batch_size: 50000
   num_workers: 8
   pin_memory: True
-  train_val_test_split: [200000, 30000, 30000]
+  train_val_test_split: [700000, 50000, 50000]
 
 
 # ## override /model:

@@ -248,6 +248,9 @@ class EventDiscModule(LightningModule):
         input_generated = torch.cat([hadrons_generated, ptypes_generated], dim=-1)
         input_truths = torch.cat([hadrons_truths, ptypes_truths], dim=-1)
 
+        pids_generated = torch.flatten(batch["cond_data"].hadron_pids, start_dim=0, end_dim=1)
+        pids_truths = torch.flatten(batch["obs_data"].hadron_pids, start_dim=0, end_dim=1)
+
         # with real batch
         score_truth = self.discriminator(input_truths, observed_event_label).squeeze(-1)
         label = torch.ones_like(score_truth)
@@ -267,8 +270,11 @@ class EventDiscModule(LightningModule):
         hadrons_truths = hadrons_truths.cpu().detach().numpy()
         generated_event_label = generated_event_label.cpu().detach().numpy()
         observed_event_label = observed_event_label.cpu().detach().numpy()
-        ptypes_generated = ptypes_generated.cpu().detach().numpy()
-        ptypes_truths = ptypes_truths.cpu().detach().numpy()
+        # ptypes_generated = ptypes_generated.cpu().detach().numpy()
+        # ptypes_truths = ptypes_truths.cpu().detach().numpy()
+
+        pids_generated = pids_generated.cpu().detach().numpy()
+        pids_truths = pids_truths.cpu().detach().numpy()
 
         return {
             "ls": loss_disc,
@@ -278,8 +284,10 @@ class EventDiscModule(LightningModule):
             "observed_event_label": observed_event_label,
             "score_generated": score_fakes,
             "score_truths": score_truth,
-            "ptypes_generated": ptypes_generated,
-            "ptypes_truths": ptypes_truths
+            # "ptypes_generated": ptypes_generated,
+            # "ptypes_truths": ptypes_truths,
+            "pids_generated": pids_generated,
+            "pids_truths": pids_truths,
         }
 
     def compare(
@@ -325,8 +333,8 @@ class EventDiscModule(LightningModule):
         score_truths = []
         generated_event_label = []
         observed_event_label = []
-        ptypes_generated = []
-        ptypes_truths = []
+        pids_generated = []
+        pids_truths = []
         for perf in validation_step_outputs:
             self.val_loss_disc(perf["ls"])
             hadrons_generated = (
@@ -374,15 +382,15 @@ class EventDiscModule(LightningModule):
                 )
             )
 
-            ptypes_generated = (
-                perf["ptypes_generated"]
-                if len(ptypes_generated) == 0
-                else np.concatenate((ptypes_generated, perf["ptypes_generated"]))
+            pids_generated = (
+                perf["pids_generated"]
+                if len(pids_generated) == 0
+                else np.concatenate((pids_generated, perf["pids_generated"]))
             )
-            ptypes_truths = (
-                perf["ptypes_truths"]
-                if len(ptypes_truths) == 0
-                else np.concatenate((ptypes_truths, perf["ptypes_truths"]))
+            pids_truths = (
+                perf["pids_truths"]
+                if len(pids_truths) == 0
+                else np.concatenate((pids_truths, perf["pids_truths"]))
             )
         
         self.log("val/loss", self.val_loss_disc.compute(), on_step=False, on_epoch=True, prog_bar=True)
@@ -402,8 +410,8 @@ class EventDiscModule(LightningModule):
                                 hadrons_truths=hadrons_truths,
                                 generated_event_label=generated_event_label,
                                 observed_event_label=observed_event_label,
-                                ptypes_generated=ptypes_generated,
-                                ptypes_truths=ptypes_truths)
+                                pids_generated=pids_generated,
+                                pids_truths=pids_truths)
         if self.current_epoch == self.trainer.max_epochs - 1:
             os.makedirs(self.hparams.outdir, exist_ok=True)
             np.savez_compressed(os.path.join(self.hparams.outdir, "final.npz"),
@@ -413,8 +421,8 @@ class EventDiscModule(LightningModule):
                                 hadrons_truths=hadrons_truths,
                                 generated_event_label=generated_event_label,
                                 observed_event_label=observed_event_label,
-                                ptypes_generated=ptypes_generated,
-                                ptypes_truths=ptypes_truths)
+                                pids_generated=pids_generated,
+                                pids_truths=pids_truths)
 
     def test_step(self, batch: Any, batch_idx: int):
         """Test step"""
@@ -434,8 +442,8 @@ class EventDiscModule(LightningModule):
         score_truths = []
         generated_event_label = []
         observed_event_label = []
-        ptypes_generated = []
-        ptypes_truths = []
+        pids_generated = []
+        pids_truths = []
         for perf in test_step_outputs:
             self.test_loss_disc(perf["ls"])
             hadrons_generated = (
@@ -482,15 +490,15 @@ class EventDiscModule(LightningModule):
                     )
                 )
             )
-            ptypes_generated = (
-                perf["ptypes_generated"]
-                if len(ptypes_generated) == 0
-                else np.concatenate((ptypes_generated, perf["ptypes_generated"]))
+            pids_generated = (
+                perf["pids_generated"]
+                if len(pids_generated) == 0
+                else np.concatenate((pids_generated, perf["pids_generated"]))
             )
-            ptypes_truths = (
-                perf["ptypes_truths"]
-                if len(ptypes_truths) == 0
-                else np.concatenate((ptypes_truths, perf["ptypes_truths"]))
+            pids_truths = (
+                perf["pids_truths"]
+                if len(pids_truths) == 0
+                else np.concatenate((pids_truths, perf["pids_truths"]))
             )
         
         self.log("test/loss", self.test_loss_disc.compute(), on_step=False, on_epoch=True, prog_bar=True)
@@ -509,6 +517,6 @@ class EventDiscModule(LightningModule):
                             hadrons_truths=hadrons_truths,
                             generated_event_label=generated_event_label,
                             observed_event_label=observed_event_label,
-                            ptypes_generated=ptypes_generated,
-                            ptypes_truths=ptypes_truths)
+                            pids_generated=pids_generated,
+                            pids_truths=pids_truths)
         
