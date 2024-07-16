@@ -29,7 +29,7 @@ generator:
 
 discriminator:
   _target_: hadml.models.components.deep_set.DeepSetModule
-  input_dim: 385
+  input_dim: 385  #### CHANGE DIM ACCORDINGLY: EMBEDDING_DIM + 4_VECTOR ####
   encoder_dims:  ${gen_list:256,3}
   decoder_dims: ${gen_list:256,3}
   output_dim: 1

@@ -61,8 +61,7 @@ HerwigData="/path/to/lightning-hydra-template/data"
 ```
 The environment variable `HerwigData` is used to locate the data files.
 
-## Training the "Cluster Decayer" with particle type labels
-(not tested yet)
+## Training the Event Discriminator
 
 To perform a training, run the following command:
 ```bash
