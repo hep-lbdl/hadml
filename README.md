@@ -21,7 +21,7 @@ machine fulfills the following requirements:
 
 ```bash
 # Cloning the project repository
-$ git clone https://github.com/remilvus/hadml.git
+$ git clone https://github.com/hep-lbdl/hadml
 $ cd hadml
 
 # Creating a Conda virtual environment
@@ -104,7 +104,7 @@ or
 
 ```bash
 # Cloning the project repository:
-(herwig) $ git clone https://github.com/remilvus/hadml.git
+(herwig) $ git clone https://github.com/hep-lbdl/hadml
 (herwig) $ cd hadml
 
 # Installing packages with pip    

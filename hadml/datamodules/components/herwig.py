@@ -207,7 +207,7 @@ class Herwig(LightningDataModule):
         if self.hparams.cache_dir is not None:
             processed_fnames = {
                 name: pathlib.Path(self.hparams.cache_dir).joinpath(
-                    self.hparams.fname + f"_{name}.npy"
+                    f"{name}.npy"
                 )
                 for name in ["q1", "q2", "c", "h1", "h2", "event_labels"]
             }
