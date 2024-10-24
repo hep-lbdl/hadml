@@ -49,6 +49,7 @@ class CondEventGANModule(LightningModule):
         scheduler_discriminator: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         comparison_fn: Optional[Callable] = None,
         outdir: Optional[str] = None,
+        datamodule: torch.nn.Module = None,
     ):
         super().__init__()
 

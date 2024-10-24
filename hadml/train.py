@@ -76,7 +76,7 @@ def train(cfg: DictConfig, logger=None) -> Tuple[dict, dict]:
     datamodule: LightningDataModule = hydra.utils.instantiate(cfg.datamodule)
 
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
+    model: LightningModule = hydra.utils.instantiate(cfg.model, datamodule=datamodule)
 
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = utils.instantiate_callbacks(cfg.get("callbacks"))
