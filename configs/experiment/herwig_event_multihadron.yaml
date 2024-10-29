@@ -46,9 +46,7 @@ datamodule:
   batch_size: 10000
   num_workers: 8
   pin_memory: True
-  # train_val_test_split: [200000, 30000, 30000]
-  train_val_test_split: [6, 2, 2]
-
+  train_val_test_split: [500000, 200000, 300000]
 
 # ## override /model:
 model:

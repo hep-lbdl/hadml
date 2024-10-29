@@ -5,11 +5,11 @@ import pickle
 from typing import Dict, Optional, Tuple
 import glob
 import math
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 import torch
+
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.core.mixins import HyperparametersMixin
 
@@ -25,7 +25,6 @@ from hadml.datamodules.components.utils import (
 
 from torch_geometric.data import Data
 from torch_geometric.data import InMemoryDataset
-
 from torch.utils.data import Dataset as TorchDataset
 
 pid_map_fname = "pids_to_ix.pkl"
@@ -663,14 +662,19 @@ class HerwigEventDataset(InMemoryDataset):
 class HerwigEventMultiHadronDataset(InMemoryDataset):
     def __init__(
         self,
-        root,
-        transform=None,
-        pre_transform=None,
-        pre_filter=None,
-        raw_file_list=None,
-        processed_file_name="herwig_graph_data.pt",
+        root,                                           # Data directory path
+        transform=None,                                 # Transforming data before accessing
+        pre_transform=None,                             # Transforming data before saving
+        pre_filter=None,                                # Filtering data before saving   
+        raw_file_list=None,                             # Raw data filename
+        processed_file_name="herwig_graph_data.pt",     # Processed data filename
+        num_used_hadron_types: Optional[int] = None,    # Number of used hadron types (uniques PIDs)
+        cluster_rest_frame=True,                        # Hadron kinematics boosted in the cluster rest frame when True                             
+        debug=False,                                    # Number of events being processed is printed when True
+        prepare_distribution_plots=False                # Preparing diagrams depicting processed data distributions 
     ):
 
+        # Handling data source paths and other attributes
         self.raw_file_list = []
         for pattern in raw_file_list:
             self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
@@ -678,18 +682,26 @@ class HerwigEventMultiHadronDataset(InMemoryDataset):
             os.path.basename(raw_file) for raw_file in self.raw_file_list
         ]
         self.processed_file_name = processed_file_name
+        self.root = root
+        self.raw_file_list = raw_file_list
+        self.num_used_hadron_types = num_used_hadron_types
+        self.cluster_rest_frame = cluster_rest_frame
+        self.prepare_distribution_plots = prepare_distribution_plots
 
-        if root:
-            pids_map_path = os.path.join(root, pid_map_fname)
-        if os.path.exists(pids_map_path):
-            print("Loading existing pids map: ", pids_map_path)
-            self.pids_to_ix = pickle.load(open(pids_map_path, "rb"))
+        # Particle type map
+        if self.root:
+            self.pids_map_path = os.path.join(self.root, pid_map_fname)
+        if os.path.exists(self.pids_map_path):
+            print("Loading existing pids map: ", self.pids_map_path)
+            self.pids_to_ix = pickle.load(open(self.pids_map_path, "rb"))
         else:
-            raise RuntimeError("No pids map found at", pids_map_path)
+            print("Creating a PID-to-MostCommonID map...")
+            self.process(create_dict=True, debug=debug)
 
-        super().__init__(root, transform, pre_transform, pre_filter)
-
+        # Loading the processed data (created by self.process())
+        super().__init__(self.root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0])
+
 
     @property
     def raw_file_names(self):
@@ -697,77 +709,236 @@ class HerwigEventMultiHadronDataset(InMemoryDataset):
             return self.raw_file_list
         return ["ClusterTo2Pi0_new.dat"]
 
+
     @property
     def processed_file_names(self):
         return [self.processed_file_name]
 
+
     def download(self):
         pass
 
-    def process(self):
+
+    def process(self, create_dict=False, debug=False):
+        """ Process raw events by reading them line by line and calling 
+        the parsing method (self._create_data). Prepare the PID-to-MostCommonID map/dictionary
+        used to convert unique PIDs to IDs used as part of the input data (when create_dict=True) """
+
         all_data = []
+
+        # Setting cluster_rest_frame to "both" to obtain both
+        # the lab frame and the rest frame hadrons for preparing 
+        # distribution plots
+        cluster_rest_frame = self.cluster_rest_frame
+        if self.prepare_distribution_plots:
+            cluster_rest_frame = "both"
+
         for raw_path in self.raw_paths:
             with open(raw_path) as f:
-                data_list = [self._create_data(line) for line in f if line.strip()]
+                data_list = [self._create_data(
+                        line, 
+                        cluster_rest_frame=cluster_rest_frame,
+                        create_dict=create_dict, 
+                        n_line=i if debug else None) 
+                    for i, line in enumerate(f) if line.strip()]
+            print()
+            if not create_dict:
+                if self.pre_filter is not None:
+                    data_list = [data for data in data_list if self.pre_filter(data)]
 
-            if self.pre_filter is not None:
-                data_list = [data for data in data_list if self.pre_filter(data)]
+                if self.pre_transform is not None:
+                    data_list = [self.pre_transform(data) for data in data_list]
+                all_data += data_list  
+            else:
+                data_list = np.concatenate(data_list)
+                all_data.append(data_list)
 
-            if self.pre_transform is not None:
-                data_list = [self.pre_transform(data) for data in data_list]
+        if not create_dict:
+            # Preparing diagrams depicting processed data distributions
+            if self.prepare_distribution_plots:
+                n_hadrons = [len(d.had_kin) for d in all_data]
+                hadron_energy = torch.cat([d.had_kin for d in all_data])[:, 0]
+                cluster_energy = torch.cat([d.x for d in all_data])[:, 0]
+                self._plot_dist(data=[n_hadrons, hadron_energy, cluster_energy],
+                        xlabels=["Number of hadrons", "Energy [GeV]", "Energy [GeV]"],
+                        ylabels=["Number of clusters", "Number of hadrons", "Number of clusters"],
+                        legend_labels=["Hadron Distribution", "Hadron Energy Distribution",
+                                    "Cluster Energy Distribution"])
+            # Saving the processed data as PyTorch binary files
+            if cluster_rest_frame == "both":
+                all_data_chosen_rest_frame = []
+                for d in all_data:
+                    if self.cluster_rest_frame:
+                        had_kin = d.had_kin_rest_frame
+                    else: 
+                        had_kin = d.had_kin
+                    all_data_chosen_rest_frame += [
+                        Data(x=d.x, had_kin=had_kin, had_type_indices=d.had_type_indices,
+                        cluster_labels=d.cluster_labels)]
+                data, slices = self.collate(all_data_chosen_rest_frame)
+            else:
+                data, slices = self.collate(all_data)
+            torch.save((data, slices), self.processed_paths[0])
+        else:
+            all_types = np.array(all_data).flatten()
+            count = Counter(all_types)
+            hadron_pids = list(map(lambda x: x[0], count.most_common()))
+            self.pids_to_ix = {pids: i for i, pids in enumerate(hadron_pids)}
+            if self.num_used_hadron_types is None:
+                self.num_used_hadron_types = len(hadron_pids)
+            with open(self.pids_map_path, "wb") as f:
+                pickle.dump(self.pids_to_ix, f)
+            print(f"The PID-to-MostCommonID map has been successfully saved in {self.pids_map_path}.")
 
-            all_data += data_list
 
-        data, slices = self.collate(all_data)
-        torch.save((data, slices), self.processed_paths[0])
+    def _get_n_bins(self, data):
+        """ Compute Scott's normal reference rule and return
+        the number of bins for a histogram plot """
+        data = np.array(data)
+        std, max_value, min_value = data.std(), data.max(), data.min()
+        data_len = len(data)
 
-    def _create_data(self, line):
+        bin_width = 3.49 * std / np.power(2 * data_len, 1/3)
+        n_bins = np.rint((max_value - min_value / bin_width))
+        
+        return int(n_bins)
+
+
+    def _plot_dist(self, data, xlabels, ylabels=None, legend_labels=None, labels=None):
+        """ Draw distribution diagrams for a list of three data sets """
+        plt.clf()
+        fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+        colors = ["black", "red", "blue"]
+
+        for i in range(len(data)):
+            samples = data[i]
+            bins = self._get_n_bins(samples)
+            ax[i].hist(samples, bins=bins, color=colors[i], alpha=0.7,
+                       label=legend_labels[i])
+            ax[i].set_xlabel(xlabels[i])
+            if ylabels[i] is not None:
+                ax[i].set_ylabel(ylabels[i])
+            ax[i].legend(loc='upper right')
+
+        plt.tight_layout()
+        filepath = os.path.join(self.root, os.path.normpath("processed/distribution_plots.pdf"))
+        plt.savefig(filepath)
+        print(f"Distribution diagrams have been saved in {filepath}")
+
+
+    def _create_data(self, line, cluster_rest_frame, create_dict=False, n_line=None):
+        """ Parse data presented as an event prepared in a specific format.
+        Help self.process() to create a new PID-to-MostCommonID map/dictionary. """
+
+        # Splitting clusters   
         items = line.split("|")[:-1]
         clusters = [pd.Series(c.split(";")[:-1]).str.split(',', expand=True) for c in items]
 
-        q1s, q2s, cs, hadrons, cluster_labels, cs_for_hadrons = [], [], [], [], [], []
-        for i, cluster in enumerate(clusters):
-            # select the two quarks and the cluster /heavy cluster from the cluster
-            q1 = cluster.iloc[0].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
-            q2 = cluster.iloc[1].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
-            c = cluster.iloc[2].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
-            q1s.append(q1)
-            q2s.append(q2)
-            cs.append(c)
-            # select the final states from the cluster
-            hadron = cluster[cluster[2] == '[ ]'].to_numpy()[:, [1,3,4,5,6]].astype(float)
-            hadrons.append(hadron)
-            # assign cluster label to all hadrons
-            cluster_labels += [i] * len(hadron)
-            c_for_hadrons = c.repeat(len(hadron), axis=0)
-            cs_for_hadrons.append(c_for_hadrons)
-        # concatenate all clusters
-        q1s = np.concatenate(q1s)
-        q2s = np.concatenate(q2s)
-        cs = np.concatenate(cs)
-        hadrons = np.concatenate(hadrons)
-        cs_for_hadrons = np.concatenate(cs_for_hadrons)
-        cond_kin = np.concatenate([cs[:, [1,2,3,4]], q1s[:, [1,2,3,4]], q2s[:, [1,2,3,4]]], axis=1)
-        had_kin = np.concatenate([cs_for_hadrons[:, [1,2,3,4]], hadrons[:, [1,2,3,4]]], axis=1)
-        cond_kin_rest_frame = boost(cond_kin)
-        had_kin_rest_frame = torch.from_numpy(boost(had_kin)[:, 4:])
-        had_kin = torch.from_numpy(had_kin[:, 4:])
+        if create_dict:
+            # Creating a dictionary used for mapping particle IDs to indices
+            if n_line is not None:
+                print(f"Preparing event {n_line}", end='\r')
+            hadrons = []
+            for cluster in clusters:
+                hadrons.append(cluster[cluster[2] == '[ ]'].to_numpy()[:, [1,3,4,5,6]].astype(float))
+            hadrons = np.concatenate(hadrons)
+            return hadrons[:, [0]].astype(np.int16).flatten()
+        else:
+            q1s, q2s, cs, hadrons, cluster_labels, cs_for_hadrons = [], [], [], [], [], []
+            
+            for i, cluster in enumerate(clusters):
 
-        q_phi, q_theta = get_angles(cond_kin_rest_frame[:, 4:8])
-        q_momenta = np.stack([q_phi, q_theta], axis=1)
-        cond_info = np.concatenate([cs[:, [1,2,3,4]], q1s[:, :1], q2s[:, :1], q_momenta], axis=1)
-        cond_info = torch.from_numpy(cond_info.astype(np.float32))
+                # Selecting the two quarks and the cluster/heavy cluster from the cluster
+                q1 = cluster.iloc[0].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
+                q2 = cluster.iloc[1].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
+                c = cluster.iloc[2].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
+                q1s.append(q1)
+                q2s.append(q2)
+                cs.append(c)
+                
+                # Selecting the final states from the cluster
+                hadron = cluster[cluster[2] == '[ ]'].to_numpy()[:, [1,3,4,5,6]].astype(float)
+                hadrons.append(hadron)
+                
+                # Assigning cluster labels to hadrons
+                cluster_labels += [i] * len(hadron)
+                c_for_hadrons = c.repeat(len(hadron), axis=0)
+                cs_for_hadrons.append(c_for_hadrons)
+            
+            # Concatenating clusters
+            q1s = np.concatenate(q1s)
+            q2s = np.concatenate(q2s)
+            cs = np.concatenate(cs)
 
-        # convert particle IDs to indices
-        # then these indices can be embedded in N dim. space
-        had_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(hadrons[:, [0]].astype(np.int16)))
+            # hadrons [PID, E, px, py, pz]
+            hadrons = np.concatenate(hadrons)                  
 
-        data = Data(
-            x=cond_info.float(),
-            had_kin_rest_frame=had_kin_rest_frame.float(),
-            had_kin=had_kin.float(),
-            had_type_indices=had_type_indices,
-            cluster_labels=torch.tensor(cluster_labels).int(),
-            edge_index=None,
-        )
-        return data
+            # heaviest clusters [Cluster ID, E, px, py, pz]                 
+            cs_for_hadrons = np.concatenate(cs_for_hadrons)    
+
+            # heaviest clusters + 2 quarks 
+            # [c_E, c_px, c_py, c_pz, q1_E, q1_px, q1_py, q1_pz, q2_E, q2_px, q2_py, q2_pz]
+            cond_kin = np.concatenate([cs[:, [1,2,3,4]], q1s[:, [1,2,3,4]], q2s[:, [1,2,3,4]]], axis=1)
+
+            # heaviest cluster + hadron
+            # [c_E, c_px, c_py, c_pz, h_E, h_px, h_py, h_pz]
+            had_kin = np.concatenate([cs_for_hadrons[:, [1,2,3,4]], hadrons[:, [1,2,3,4]]], axis=1)
+
+            # Heaviest cluster + 2 quarks in the rest frame (rf) of the former
+            # [c_E, c_px, c_py, c_pz, q1_Erf, q1_pxrf, q1_pyrf, q1_pzrf, q2_Erf, q2_pxrf, q2_pyrf, q2_pzrf]
+            cond_kin_rest_frame = boost(cond_kin)
+            
+            if cluster_rest_frame:
+                # Hadrons in the rest frame (rf) of the heaviest cluster
+                # [Erf, pxrf, pyrf, pzrf]
+                had_kin_rest_frame = torch.from_numpy(boost(had_kin)[:, 4:])
+
+            # Hadrons [E, px, py, pz]
+            had_kin = torch.from_numpy(had_kin[:, 4:])
+
+            # Computing angles for the two quarks via cond_kin_rest_frame, 
+            # i.e. [cluster + q1/q2 in the cluster rest frame]
+            q_phi, q_theta = get_angles(cond_kin_rest_frame[:, 4:8])
+            # Computing quark momenta based on the angles
+            q_momenta = np.stack([q_phi, q_theta], axis=1)
+
+            # Preparing X (cluster + quark types + quark momenta in the cluster rest frame, crf)
+            # [c_E, c_px, c_py, c_pz, q1_type, q2_type, q1_crf_momentum, q2_crf_momentum]
+            cond_info = np.concatenate([cs[:, [1,2,3,4]], q1s[:, :1], q2s[:, :1], q_momenta], axis=1)
+            cond_info = torch.from_numpy(cond_info.astype(np.float32))
+
+            # Mapping particle IDs to indices using the prepared PID-to-IDs dictionary
+            try:
+                had_type_indices = torch.from_numpy(
+                    np.vectorize(self.pids_to_ix.get)(hadrons[:, [0]].astype(np.int16)))
+            except Exception as X:
+                # Debugging what event makes the parser stop working
+                print("Line = ", line)
+                print("Exception: ", X)
+
+            if cluster_rest_frame:
+                chosen_had_kin = had_kin_rest_frame.float()
+            else:
+                chosen_had_kin = had_kin.float()
+
+            # Preparing a PyTorch geometric data object
+            # (A data object describing a homogeneous graph. The data object can hold node-level, 
+            # link-level and graph-level attributes. In general, Data tries to mimic the behavior 
+            # of a regular Python dictionary)
+            if cluster_rest_frame != "both":
+                data = Data(
+                    x=cond_info.float(),
+                    had_kin=chosen_had_kin,
+                    had_type_indices=had_type_indices,
+                    cluster_labels=torch.tensor(cluster_labels).int()
+                )
+            else:
+                data = Data(
+                    x=cond_info.float(),
+                    had_kin=had_kin.float(),
+                    had_kin_rest_frame=had_kin_rest_frame.float(),
+                    had_type_indices=had_type_indices,
+                    cluster_labels=torch.tensor(cluster_labels).int()
+                )
+
+            return data
