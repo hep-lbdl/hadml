@@ -787,8 +787,8 @@ class HerwigEventMultiHadronDataset(InMemoryDataset):
             data_list = np.concatenate(data_list)
             all_data.append(data_list)
         
-        all_types = np.array(all_data).flatten()
-        count = Counter(all_types)
+        all_data = np.array(all_data).flatten()
+        count = Counter(all_data)
         hadron_pids = list(map(lambda x: x[0], count.most_common()))
         self.pids_to_ix = {pids: i for i, pids in enumerate(hadron_pids)}
         
@@ -939,19 +939,17 @@ class HerwigEventMultiHadronDataset(InMemoryDataset):
         # link-level and graph-level attributes. In general, Data tries to mimic the behavior 
         # of a regular Python dictionary)
         if cluster_rest_frame != "both":
-            data = Data(
+            return Data(
                 x=cond_info.float(),
                 had_kin=chosen_had_kin,
                 had_type_indices=had_type_indices,
                 cluster_labels=torch.tensor(cluster_labels).int()
             )
         else:
-            data = Data(
+            return Data(
                 x=cond_info.float(),
                 had_kin=had_kin.float(),
                 had_kin_rest_frame=had_kin_rest_frame.float(),
                 had_type_indices=had_type_indices,
                 cluster_labels=torch.tensor(cluster_labels).int()
             )
-
-        return data
