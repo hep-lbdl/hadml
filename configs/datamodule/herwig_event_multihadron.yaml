@@ -7,7 +7,7 @@ frac_data_used:
 
 cond_dataset:
   _target_: hadml.datamodules.components.herwig.HerwigEventMultiHadronDataset
-  root: ${paths.data_dir}Herwig/
+  data_dir: ${paths.data_dir}Herwig/
   raw_file_list:
     - "AllClusters_1M.dat"
   processed_file_name: "herwig_multihadron_graph_cond_data.pt"
@@ -17,9 +17,9 @@ cond_dataset:
 
 obs_dataset:
   _target_: hadml.datamodules.components.herwig.HerwigEventMultiHadronDataset
-  root: ${paths.data_dir}Herwig/
+  data_dir: ${paths.data_dir}Herwig/
   raw_file_list:
     - "AllClusters_1M.dat"
   processed_file_name: "herwig_multihadron_graph_obs_data_variation.pt"
-  cluster_rest_frame: True
+  cluster_rest_frame: False
   debug: False
