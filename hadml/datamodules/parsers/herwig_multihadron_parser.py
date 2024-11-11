@@ -9,14 +9,11 @@ parser = HerwigMultihadronParser(
     data_dir="data/Herwig",
     raw_file_list=["AllClusters_1K.dat"],
     processed_filename="herwig_multihadron_events_1K.npy",
-    pid_map_file="pid_to_idx_1K.pkl",
+    pid_map_file="pid_to_idx.pkl",
     debug=True)
 
 parser.parse_data()
 ****************************************************************************************************
-
-Make sure you mention the number of events in the names of the raw/processed data files, as well as
-the PID-to-MostCommonID dictionary (i.e. map).
 
 """
 
@@ -92,7 +89,6 @@ class Parser():
             processed_data["had_kin"].append(d["had_kin"])
             processed_data["had_kin_rest_frame"].append(d["had_kin_rest_frame"])
             processed_data["had_type_indices"].append(d["had_type_indices"])
-            processed_data["cluster_labels"].append(d["had_type_indices"])
             processed_data["cluster_labels"].append(d["cluster_labels"])
         
         with open(self.processed_filepath, "wb") as f:
