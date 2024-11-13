@@ -41,14 +41,7 @@ callbacks:
     save_top_k: 5
     save_last: True
   
-# ## override /datamodule:
-datamodule:
-  batch_size: 10000
-  num_workers: 8
-  pin_memory: True
-  train_val_test_split: [500000, 200000, 300000]
-
-# ## override /model:
+# override /model:
 model:
   noise_dim: 10
   generator:
@@ -65,13 +58,3 @@ model:
 
   num_critics: 1
   num_gen: 5
-
-# cond_dataset:
-#   raw_file_list:
-#     - "ClusterTo2Pi0_nominal.dat"
-#   processed_file_name: "herwig_graph_cond_data.pt"
-
-# obs_dataset:
-#   raw_file_list:
-#     - "ClusterTo2Pi0_nominal_2.dat"
-#   processed_file_name: "herwig_graph_obs_data.pt"

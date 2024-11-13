@@ -1,25 +1,14 @@
-_target_: hadml.datamodules.gan_datamodule.EventGANDataModule
-batch_size: 1
-num_workers: 1
-pin_memory: False
-train_val_test_split: [5, 2, 3]
-frac_data_used:
+_target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
-cond_dataset:
-  _target_: hadml.datamodules.components.herwig.HerwigEventMultiHadronDataset
-  data_dir: ${paths.data_dir}Herwig/
-  raw_file_list:
-    - "AllClusters_1M.dat"
-  processed_file_name: "herwig_multihadron_graph_cond_data.pt"
-  cluster_rest_frame: True
-  debug: False
-  prepare_distribution_plots: True
+# Basic parameters
+batch_size: 32
+num_workers: 8
+train_val_test_split: [0.7, 0.15, 0.15]
 
-obs_dataset:
-  _target_: hadml.datamodules.components.herwig.HerwigEventMultiHadronDataset
-  data_dir: ${paths.data_dir}Herwig/
-  raw_file_list:
-    - "AllClusters_1M.dat"
-  processed_file_name: "herwig_multihadron_graph_obs_data_variation.pt"
-  cluster_rest_frame: True
-  debug: False
+# Raw file paths (the GAN datamodule will pass those arguments to an appropriate parser)
+raw_file_list:
+  - "AllClusters_10K.dat"
+processed_filename: "herwig_multihadron_events_10K.npy"
+
+# Use it if you want to see invoke data preparation without initialising your PyTorch Lightning model
+initialise_data_preparation: True
