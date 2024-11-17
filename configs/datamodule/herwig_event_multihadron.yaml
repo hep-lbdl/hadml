@@ -10,5 +10,5 @@ raw_file_list:
   - "AllClusters_10K.dat"
 processed_filename: "herwig_multihadron_events_10K.npy"
 
-# Use it if you want to see invoke data preparation without initialising your PyTorch Lightning model
+# Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
 initialise_data_preparation: True
