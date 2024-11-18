@@ -7,6 +7,7 @@ from torch_geometric.loader import DataLoader as GeometricDataLoader
 from torch_geometric.data.dataset import Dataset as GeometricDataset
 from hadml.datamodules.components.utils import process_data_split, get_num_asked_events
 from hadml.datamodules.components.herwig_multihadron_parser import HerwigMultiHadronEventParser
+from hadml.datamodules.components.herwig import HerwigMultiHadronEventDataset
 
 
 class GANDataProtocol(Protocol):
@@ -290,8 +291,8 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             self.setup()
             one_train_batch = next(iter(self.train_dataloader()))
             gen_input, disc_input = one_train_batch
-            print("\nGenerator input batch:", len(gen_input))
-            print("Discriminator input batch:", len(disc_input))
+            print(f"\nGenerator input batch: {len(gen_input)} ([{gen_input.size()}])")
+            print(f"Discriminator input batch: {len(disc_input)} ([{disc_input.size()}])")
             print("\nGenerator input sample", gen_input[0])
             print("\nDiscriminator input sample", disc_input[0])
 
@@ -306,89 +307,56 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         had_type_indices = data.item()["had_type_indices"]
         cluster_labels = data.item()["cluster_labels"]
         n_events = len(cluster_kin)
-
-        # Tokenisation 
-        max_n_hadrons = max([len(hadrons) for hadrons in hadron_kin])
-        n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop token
-
-        cluster_padding_token = torch.zeros(1, len(cluster_kin[0][0]))
-        hadron_padding_token = torch.zeros(1, len(hadron_kin[0][0]) + n_had_types)
-        hadron_padding_token[0, len(hadron_kin[0][0])] = 1.0
-
-        n_clusters_extracted_from_events, generator_cond_input, discriminator_input = \
-            self._prepare_sentences(n_events, cluster_kin, hadron_kin, cluster_labels, 
-                                    max_n_hadrons, cluster_padding_token, hadron_padding_token, 
-                                    n_had_types, had_type_indices)
-
-        generator_cond_input = torch.stack(generator_cond_input)
-        discriminator_input = torch.stack(discriminator_input)
-
-        print("Initial number of events:", n_events)
-        print("Total number of clusters:", n_clusters_extracted_from_events)
-        print("Total number of hadron types:", n_had_types)
-        print("Largest number of hadrons per cluster:", max_n_hadrons)
-        print("Generator conditioning input shape:", generator_cond_input.size())
-        print("Discriminator input (real data) shape: ", discriminator_input.size(),
-              '\n', '-'*70, sep='')
-
-        self.generator_cond_input = generator_cond_input
-        self.discriminator_input = discriminator_input
-
-
-    def _prepare_sentences(self, n_events, cluster_kin, hadron_kin, cluster_labels, max_n_hadrons,
-                           cluster_padding_token, hadron_padding_token, n_had_types,
-                           had_type_indices):
-        
+        self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop token
+ 
+        # Assigning hadrons to clusters 
         n_clusters_extracted_from_events = 0
-        generator_cond_input, discriminator_input = [], []
+        self.clusters, self.hadrons_with_types = [], []
 
         for i in range(n_events):
-            input_sentences = []
-            output_sentences = []
+            cluster_in_event = []  # [cluster ... cluster]
+            hadrons_in_event = []  # [ [[hadron ... hadron][h_id ... h_id]] ... [[...][...]] ]
 
             for j, cluster in enumerate(cluster_kin[i]):
-                # Preparing the input sentence. Tokens then need to be concatenated with noise.
-                # [[cluster_kin][cluster_kin]...[padding_token]] 
-                # # N = max number of hadrons produced by the heaviest cluster
+                # Extracting all clusters from a single event
                 cluster_idx_mask = [cl == j for cl in cluster_labels[i]]
-                n_hadrons = sum(cluster_idx_mask)
-                token = torch.from_numpy(cluster).unsqueeze(0)
-                sentence = torch.cat([token for _ in range(n_hadrons)])
-                if max_n_hadrons - n_hadrons > 0:
-                    padding_tokens = torch.cat([cluster_padding_token for 
-                                                _ in range(max_n_hadrons - n_hadrons)])
-                    sentence = torch.cat([sentence, padding_tokens])
-                input_sentences.append(sentence)
+                cluster = torch.from_numpy(cluster)
+                cluster_in_event.append(cluster)
                 n_clusters_extracted_from_events += 1
-                
-                # Preparing the output sentence. The hadron type is a one-hot vector.
-                # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
-                # N = max number of hadrons produced by the heaviest cluster
+                # Extracting all hadrons from a single event
                 hadrons = torch.tensor(hadron_kin[i][cluster_idx_mask])
-                hadron_types = torch.tensor(
-                    had_type_indices[i][cluster_idx_mask]).squeeze(1) + 1 # shift for a stop token
-                hadron_types_ohe = torch.nn.functional.one_hot(hadron_types, n_had_types)
-                sentence = torch.cat([hadrons, hadron_types_ohe], dim=1)
-                if max_n_hadrons - n_hadrons > 0:
-                    hadron_padding_tokens = torch.cat([hadron_padding_token 
-                                                    for _ in range(max_n_hadrons - n_hadrons)])
-                    sentence = torch.cat([sentence, hadron_padding_tokens])
-                output_sentences.append(sentence)
+                # Shifting the hadron type for an additional type assigned to a stop token (= 0) 
+                hadron_types = torch.tensor(had_type_indices[i][cluster_idx_mask]).squeeze(1) + 1 
+                hadrons_in_event.append([hadrons, hadron_types])
 
-            generator_cond_input += input_sentences
-            discriminator_input += output_sentences
+            self.clusters += cluster_in_event
+            self.hadrons_with_types += hadrons_in_event
 
-        return n_clusters_extracted_from_events, generator_cond_input, discriminator_input
+        self.max_n_hadrons = max([len(hadron_with_type[0]) for hadron_with_type in 
+                                  self.hadrons_with_types])
+        
+        print("Initial number of events:", n_events)
+        print("Total number of clusters:", n_clusters_extracted_from_events)
+        print("Total number of hadron types (with a stop token):", self.n_had_types)
+        print("Largest number of hadrons per cluster:", self.max_n_hadrons)
 
 
     def setup(self, stage: Optional[str] = None):
         if not self.data_train and not self.data_val and not self.data_test:
-            dataset = torch.utils.data.TensorDataset(self.generator_cond_input, self.discriminator_input)
+            # Passing clusters and hadrons to a dataset reponsible for tokenisation
+            dataset = HerwigMultiHadronEventDataset(
+                self.n_had_types,
+                self.clusters,
+                self.hadrons_with_types,
+                self.max_n_hadrons)
+            
+            # Creating the training, validation and test datasets
             self.data_train, self.data_val, self.data_test = random_split(
                 dataset=dataset,
                 lengths=self.train_val_test_split,
                 generator=torch.Generator().manual_seed(42),
             )
+
             print(f"Number of training examples: {len(self.data_train)}")
             print(f"Number of validation examples: {len(self.data_val)}")
             print(f"Number of test examples: {len(self.data_test)}")

@@ -26,6 +26,7 @@ from hadml.datamodules.components.utils import (
 from torch_geometric.data import Data
 from torch_geometric.data import InMemoryDataset
 from torch.utils.data import Dataset as TorchDataset
+from torch.utils.data import Dataset
 
 pid_map_fname = "pids_to_ix.pkl"
 
@@ -657,3 +658,56 @@ class HerwigEventDataset(InMemoryDataset):
             ).long(),
         )
         return data
+
+
+class HerwigMultiHadronEventDataset(Dataset):
+    """ This class takes preprocessed multihadron events (i.e. clusters and multiple hadrons having 
+    different types transformed to indices) and provide the DataLoader class object with prepared 
+    generator and discriminator sentences. """
+
+    def __init__(self, n_had_types, clusters, hadrons_with_types, max_n_hadrons):
+        super().__init__()
+
+        self.n_had_types = n_had_types
+        self.hadrons_with_types = hadrons_with_types
+        self.clusters = clusters
+        self.n_clusters = len(clusters)
+        self.max_n_hadrons = max_n_hadrons
+        # Cluster padding token (zeros)
+        self.cluster_padding_token = torch.zeros(1, len(clusters[0]))
+        # Hadron padding token (zeros + special hadron type: the first one-hot position)
+        self.hadron_padding_token = torch.zeros(1, len(hadrons_with_types[0][0][0]) + n_had_types)
+        self.hadron_padding_token[0, len(hadrons_with_types[0][0][0])] = 1.0
+
+
+    def __len__(self):
+        return self.n_clusters
+
+
+    def __getitem__(self, index):
+        """ This method is mainly responsible for tokenisation and building sentences containing 
+        "cluster/hadron padding tokens". It returns a pair of prepared sentences. """
+
+        # Preparing the input sentence. Tokens then need to be concatenated with noise.
+        # [[cluster_kin][cluster_kin]...[padding_token]] 
+        # N = max number of hadrons produced by the heaviest cluster
+        n_hadrons = len(self.hadrons_with_types[index][0])
+        gen_input = torch.cat([self.clusters[index].unsqueeze(0) for _ in range(n_hadrons)])
+        if self.max_n_hadrons - n_hadrons > 0:
+            padding_tokens = torch.cat([self.cluster_padding_token for 
+                                        _ in range(self.max_n_hadrons - n_hadrons)])
+            gen_input = torch.cat([gen_input, padding_tokens])
+        
+        # Preparing the output sentence. The hadron type is a one-hot vector.
+        # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
+        # N = max number of hadrons produced by the heaviest cluster
+        hadrons = self.hadrons_with_types[index][0]
+        hadron_types = self.hadrons_with_types[index][1]
+        hadron_types_ohe = torch.nn.functional.one_hot(hadron_types, self.n_had_types)
+        disc_input = torch.cat([hadrons, hadron_types_ohe], dim=1)
+        if self.max_n_hadrons - n_hadrons > 0:
+            hadron_padding_tokens = torch.cat([self.hadron_padding_token 
+                                            for _ in range(self.max_n_hadrons - n_hadrons)])
+            disc_input = torch.cat([disc_input, hadron_padding_tokens])
+        
+        return gen_input, disc_input
