@@ -13,48 +13,30 @@
 
 defaults:
   - override /datamodule: herwig_event_multihadron.yaml
-  - override /model: cond_event_gan.yaml
-  - override /callbacks: default.yaml
-  - override /trainer: gpu.yaml
+  - override /model: multihadron_event_gan.yaml
+  # - override /callbacks: default.yaml
+  # - override /trainer: gpu.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
-task_name: herwigEvent
-tags: ["herwig", "Events"]
+task_name: herwigMultiHadronEvents
+tags: ["herwig", "MultiHadronEvents"]
 
-logger:
-  wandb:
-    project: "herwigEventsMultiHadron"
-    tags: ["herwig", "Events"]
-    name: fit_to_nominal
+# logger:
+#   wandb:
+#     project: "herwigEventsMultiHadron"
+#     tags: ["herwig", "Events"]
+#     name: fit_to_nominal
 
-seed: 12345
+# seed: 12345
 
-trainer:
-  max_epochs: 6000
-  log_every_n_steps: 1
+# trainer:
+#   max_epochs: 6000
+#   log_every_n_steps: 1
 
-callbacks:
-  model_checkpoint:
-    monitor: "val/min_avg_wd"
-    mode: "min"
-    save_top_k: 5
-    save_last: True
-  
-# override /model:
-model:
-  noise_dim: 10
-  generator:
-    hidden_dims: [256, 256]
-
-  discriminator:
-    _target_: hadml.models.components.deep_set.DeepSetModule
-
-  optimizer_generator:
-    lr: 0.000001
-
-  optimizer_discriminator:
-    lr: 0.0001
-
-  num_critics: 1
-  num_gen: 1
+# callbacks:
+#   model_checkpoint:
+#     monitor: "val/min_avg_wd"
+#     mode: "min"
+#     save_top_k: 5
+#     save_last: True
