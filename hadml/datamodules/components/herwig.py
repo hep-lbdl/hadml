@@ -28,7 +28,7 @@ from torch_geometric.data import InMemoryDataset
 from torch.utils.data import Dataset as TorchDataset
 from torch.utils.data import Dataset
 
-pid_map_fname = "pids_to_ix.pkl"
+pid_map_fname = "pid_to_idx.pkl"
 
 
 class Herwig(LightningDataModule):
@@ -673,8 +673,6 @@ class HerwigMultiHadronEventDataset(Dataset):
         self.clusters = clusters
         self.n_clusters = len(clusters)
         self.max_n_hadrons = max_n_hadrons
-        # Cluster padding token (zeros)
-        self.cluster_padding_token = torch.zeros(1, len(clusters[0]))
         # Hadron padding token (zeros + special hadron type: the first one-hot position)
         self.hadron_padding_token = torch.zeros(1, len(hadrons_with_types[0][0][0]) + n_had_types)
         self.hadron_padding_token[0, len(hadrons_with_types[0][0][0])] = 1.0
@@ -692,11 +690,7 @@ class HerwigMultiHadronEventDataset(Dataset):
         # [[cluster_kin][cluster_kin]...[padding_token]] 
         # N = max number of hadrons produced by the heaviest cluster
         n_hadrons = len(self.hadrons_with_types[index][0])
-        gen_input = torch.cat([self.clusters[index].unsqueeze(0) for _ in range(n_hadrons)])
-        if self.max_n_hadrons - n_hadrons > 0:
-            padding_tokens = torch.cat([self.cluster_padding_token for 
-                                        _ in range(self.max_n_hadrons - n_hadrons)])
-            gen_input = torch.cat([gen_input, padding_tokens])
+        gen_input = torch.cat([self.clusters[index].unsqueeze(0) for _ in range(self.max_n_hadrons)])
         
         # Preparing the output sentence. The hadron type is a one-hot vector.
         # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]

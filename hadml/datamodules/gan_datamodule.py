@@ -271,9 +271,9 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         self.train_val_test_split = train_val_test_split
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.data_train: Optional[torch.utils.data.Dataset] = None
-        self.data_val: Optional[torch.utils.data.Dataset] = None
-        self.data_test: Optional[torch.utils.data.Dataset] = None
+        self.data_train: Optional[Dataset] = None
+        self.data_val: Optional[Dataset] = None
+        self.data_test: Optional[Dataset] = None
 
         parser = HerwigMultiHadronEventParser(
             data_dir=data_dir,
@@ -307,11 +307,26 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         had_type_indices = data.item()["had_type_indices"]
         cluster_labels = data.item()["cluster_labels"]
         n_events = len(cluster_kin)
-        self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop token
+        self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop/padding token
  
         # Assigning hadrons to clusters 
+        self.clusters, self.hadrons_with_types, n = self.__get_hadrons_and_clusters__(
+            n_events, cluster_kin, cluster_labels, hadron_kin, had_type_indices)
+        n_clusters_extracted_from_events = n
+
+        self.max_n_hadrons = max([len(hadron_with_type[0]) for hadron_with_type in 
+                                  self.hadrons_with_types])
+        
+        print("Initial number of events:", n_events)
+        print("Total number of clusters:", n_clusters_extracted_from_events)
+        print("Total number of hadron types (with a stop token):", self.n_had_types)
+        print("Largest number of hadrons per cluster:", self.max_n_hadrons)
+
+
+    def __get_hadrons_and_clusters__(self, n_events, cluster_kin, cluster_labels, hadron_kin, 
+                                     had_type_indices):
+        clusters, hadrons_with_types = [], []
         n_clusters_extracted_from_events = 0
-        self.clusters, self.hadrons_with_types = [], []
 
         for i in range(n_events):
             cluster_in_event = []  # [cluster ... cluster]
@@ -329,16 +344,10 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 hadron_types = torch.tensor(had_type_indices[i][cluster_idx_mask]).squeeze(1) + 1 
                 hadrons_in_event.append([hadrons, hadron_types])
 
-            self.clusters += cluster_in_event
-            self.hadrons_with_types += hadrons_in_event
+            clusters += cluster_in_event
+            hadrons_with_types += hadrons_in_event
 
-        self.max_n_hadrons = max([len(hadron_with_type[0]) for hadron_with_type in 
-                                  self.hadrons_with_types])
-        
-        print("Initial number of events:", n_events)
-        print("Total number of clusters:", n_clusters_extracted_from_events)
-        print("Total number of hadron types (with a stop token):", self.n_had_types)
-        print("Largest number of hadrons per cluster:", self.max_n_hadrons)
+        return clusters, hadrons_with_types, n_clusters_extracted_from_events
 
 
     def setup(self, stage: Optional[str] = None):
