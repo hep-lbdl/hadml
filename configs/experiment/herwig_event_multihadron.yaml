@@ -1,42 +1,13 @@
 # @package _global_
 
-# start the environment
-# conda-start torch
-
-# to execute this experiment run:
-# python src/train.py experiment=herwig_event
-## to add a logger
-# python src/train.py experiment=herwig_all_hadron logger=wandb
-
-## with training techniques
-# python src/train.py experiment=herwig_all_hadron logger=wandb +trainer.gradient_clip_val=0.5
+# To execute this experiment run:
+# python src/train.py experiment=herwig_event_multihadron
 
 defaults:
   - override /datamodule: herwig_event_multihadron.yaml
   - override /model: multihadron_event_gan.yaml
-  # - override /callbacks: default.yaml
-  # - override /trainer: gpu.yaml
 
-# all parameters below will be merged with parameters from default configurations set above
+# All parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 task_name: herwigMultiHadronEvents
 tags: ["herwig", "MultiHadronEvents"]
-
-# logger:
-#   wandb:
-#     project: "herwigEventsMultiHadron"
-#     tags: ["herwig", "Events"]
-#     name: fit_to_nominal
-
-# seed: 12345
-
-# trainer:
-#   max_epochs: 6000
-#   log_every_n_steps: 1
-
-# callbacks:
-#   model_checkpoint:
-#     monitor: "val/min_avg_wd"
-#     mode: "min"
-#     save_top_k: 5
-#     save_last: True
