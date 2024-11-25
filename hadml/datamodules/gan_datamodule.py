@@ -8,6 +8,7 @@ from torch_geometric.data.dataset import Dataset as GeometricDataset
 from hadml.datamodules.components.utils import process_data_split, get_num_asked_events
 from hadml.datamodules.components.herwig_multihadron_parser import HerwigMultiHadronEventParser
 from hadml.datamodules.components.herwig import HerwigMultiHadronEventDataset
+import matplotlib.pyplot as plt
 
 
 class GANDataProtocol(Protocol):
@@ -266,6 +267,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             debug=True
         ):
         super().__init__()
+        self.data_dir = data_dir
         self.processed_filename = os.path.join(os.path.normpath(data_dir),
                                                "processed", processed_filename)
         self.train_val_test_split = train_val_test_split
@@ -308,7 +310,20 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         cluster_labels = data.item()["cluster_labels"]
         n_events = len(cluster_kin)
         self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop/padding token
- 
+
+        # Preparing distribution plots
+        n_hadrons = [len(d) for d in hadron_kin]
+        hadron_energy = np.concatenate([d for d in hadron_kin])[:, 0]
+        cluster_energy = np.concatenate([d for d in cluster_kin])[:, 0]
+        self._plot_dist(data=[n_hadrons, hadron_energy, cluster_energy],
+            xlabels=["Number of hadrons", "Energy [GeV]", "Energy [GeV]"],
+            ylabels=["Number of clusters", "Number of hadrons", "Number of clusters"],
+            legend_labels=["Hadron Distribution", "Hadron Energy Distribution",
+                        "Cluster Energy Distribution"])
+
+        # Changing hadron kinematics to the values computed for the cluster rest frame
+        hadron_kin = data.item()["had_kin_rest_frame"]
+
         # Assigning hadrons to clusters 
         self.clusters, self.hadrons_with_types, n = self.__get_hadrons_and_clusters__(
             n_events, cluster_kin, cluster_labels, hadron_kin, had_type_indices)
@@ -397,3 +412,39 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             num_workers=self.num_workers,
             shuffle=True
         )
+    
+
+    def _get_n_bins(self, data):
+        """ Compute Scott's normal reference rule and return
+        the number of bins for a histogram plot """
+        data = np.array(data)
+        std, max_value, min_value = data.std(), data.max(), data.min()
+        data_len = len(data)
+
+        bin_width = 3.49 * std / np.power(2 * data_len, 1/3)
+        n_bins = np.rint((max_value - min_value / bin_width))
+        
+        return int(n_bins)
+
+
+    def _plot_dist(self, data, xlabels, ylabels=None, legend_labels=None, labels=None):
+        """ Draw distribution diagrams for a list of three data sets """
+        plt.clf()
+        fig, ax = plt.subplots(1, 3, figsize=(14, 4))
+        colors = ["black", "red", "blue"]
+
+        for i in range(len(data)):
+            samples = data[i]
+            bins = self._get_n_bins(samples)
+            ax[i].hist(samples, bins=bins, color=colors[i], alpha=0.7,
+                       label=legend_labels[i])
+            ax[i].set_xlabel(xlabels[i])
+            if ylabels[i] is not None:
+                ax[i].set_ylabel(ylabels[i])
+            ax[i].legend(loc='upper right')
+
+        plt.tight_layout()
+        filepath = os.path.join(os.path.normpath(self.data_dir), 
+                                os.path.normpath("processed/distribution_plots.pdf"))
+        plt.savefig(filepath)
+        print(f"Distribution diagrams have been saved in {filepath}")
