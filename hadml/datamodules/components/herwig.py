@@ -688,17 +688,16 @@ class HerwigMultiHadronEventDataset(Dataset):
 
         # Preparing the input sentence. Tokens then need to be concatenated with noise.
         # [[cluster_kin][cluster_kin]...[padding_token]] 
-        # N = max number of hadrons produced by the heaviest cluster
-        n_hadrons = len(self.hadrons_with_types[index][0])
-        gen_input = torch.cat([self.clusters[index].unsqueeze(0) for _ in range(self.max_n_hadrons)])
-        
+        # max_n_hadrons = max number of hadrons produced by the heaviest cluster
+        gen_input = torch.stack([self.clusters[index] for _ in range(self.max_n_hadrons)])
+
         # Preparing the output sentence. The hadron type is a one-hot vector.
         # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
-        # N = max number of hadrons produced by the heaviest cluster
+        # max_n_hadrons = max number of hadrons produced by the heaviest cluster
         hadrons = self.hadrons_with_types[index][0]
-        hadron_types = self.hadrons_with_types[index][1]
-        hadron_types_ohe = torch.nn.functional.one_hot(hadron_types, self.n_had_types)
-        disc_input = torch.cat([hadrons, hadron_types_ohe], dim=1)
+        hadron_types = torch.nn.functional.one_hot(self.hadrons_with_types[index][1], self.n_had_types)
+        disc_input = torch.cat([hadrons, hadron_types], dim=1)
+        n_hadrons = len(hadrons)
         if self.max_n_hadrons - n_hadrons > 0:
             hadron_padding_tokens = torch.cat([self.hadron_padding_token 
                                             for _ in range(self.max_n_hadrons - n_hadrons)])

@@ -322,7 +322,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         hadron_kin_rest_frame = data.item()["had_kin_rest_frame"]
 
         # Assigning hadrons to clusters 
-        self.clusters, self.hadrons_with_types, n = self.__get_hadrons_and_clusters__(
+        self.clusters, self.hadrons_with_types, n = self._get_hadrons_and_clusters__(
             n_events, cluster_kin, cluster_labels, hadron_kin_rest_frame, had_type_indices)
         n_clusters_extracted_from_events = n
         n_hadrons_per_cluster = [len(hadron_with_type[0]) for hadron_with_type in 
@@ -334,7 +334,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         if not os.path.exists(self.distplots_path):
             hadron_energy = np.concatenate([d for d in hadron_kin])[:, 0]
             cluster_energy = np.concatenate([d for d in cluster_kin])[:, 0]
-            self.__plot_dist(
+            self._plot_dist(
                 filepath=self.distplots_path, 
                 data=[[n_hadrons_per_event, n_hadrons_per_cluster], [hadron_energy, cluster_energy]],
                 xlabels=[["Number of hadrons", "Number of hadrons"], 
@@ -352,7 +352,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         print("Largest number of hadrons per cluster:", self.max_n_hadrons)
         print("Largest number of hadrons per event:", max(n_hadrons_per_event))
 
-    def __get_hadrons_and_clusters__(self, n_events, cluster_kin, cluster_labels, hadron_kin, 
+    def _get_hadrons_and_clusters__(self, n_events, cluster_kin, cluster_labels, hadron_kin, 
                                      had_type_indices):
         clusters, hadrons_with_types = [], []
         n_clusters_extracted_from_events = 0
@@ -426,7 +426,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             generator=torch.Generator().manual_seed(42)
         )
     
-    def __get_n_bins(self, data):
+    def _get_n_bins(self, data):
         """ Compute Scott's normal reference rule and return
         the number of bins for a histogram plot """
         data = np.array(data)
@@ -438,7 +438,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         
         return int(n_bins)
 
-    def __plot_dist(self, filepath, data, xlabels, ylabels=None, legend_labels=None, labels=None):
+    def _plot_dist(self, filepath, data, xlabels, ylabels=None, legend_labels=None, labels=None):
         """ Draw distribution diagrams for a list of three data sets """
         plt.clf()
         _, ax = plt.subplots(2, 2, figsize=(13, 8))
@@ -456,7 +456,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                         num=sample_range[1] - sample_range[0] + 2, 
                         retstep=0.5)[0]
                 else:
-                    bins = self.__get_n_bins(samples)
+                    bins = self._get_n_bins(samples)
 
                 # Preparing a chart
                 ax[r][c].hist(samples, bins=bins, color=colors[r][c], alpha=0.7,

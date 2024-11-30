@@ -61,7 +61,7 @@ class HerwigMultiHadronEventParser():
             with open(self.pids_to_idx_path, "rb") as f:
                 self.pids_to_idx = pickle.load(f)
         else:
-            self.pids_to_idx = self.__create_pids_to_idx_dict(self.debug)
+            self.pids_to_idx = self._create_pids_to_idx_dict(self.debug)
 
         # Parsing events
         all_data = []
@@ -74,7 +74,7 @@ class HerwigMultiHadronEventParser():
                     if event_line.strip():
                         if self.debug:
                             print(f"  processing event #{event_index}", end='\r')
-                        data_list.append(self.__parse_raw_event(event_line))
+                        data_list.append(self._parse_raw_event(event_line))
                 if self.debug:
                     print()
                 all_data += data_list
@@ -100,7 +100,7 @@ class HerwigMultiHadronEventParser():
             np.save(f, processed_data)
         print("Processed data saved in:\n   ", self.processed_filepath, '\n', '-'*70, sep='')    
 
-    def __parse_particles(self, event_line):
+    def _parse_particles(self, event_line):
         """ Parse all the particles (including quarks, heavy/light cluster and hadrons from
         a single event provided as a raw event line). """
         cluster_decays = event_line.split("|")[:-1]
@@ -108,11 +108,11 @@ class HerwigMultiHadronEventParser():
                         for c in cluster_decays]
         return particles
 
-    def __parse_raw_event(self, event_line):
+    def _parse_raw_event(self, event_line):
         """ Parse data presented as an event prepared in a specific format. """
 
         # Parsing all particles   
-        particles = self.__parse_particles(event_line)
+        particles = self._parse_particles(event_line)
         q1s, q2s, cs, hadrons, cluster_labels, cs_for_hadrons = [], [], [], [], [], []
         
         # Processing quarks, clusters and hadrons
@@ -194,7 +194,7 @@ class HerwigMultiHadronEventParser():
             "cluster_labels" : cluster_labels
         }
         
-    def __create_pids_to_idx_dict(self, debug=False):
+    def _create_pids_to_idx_dict(self, debug=False):
         """ Create a new PID-to-MostCommonID map/dictionary """
         
         print("Creating a new PID-to-MostCommonID map/dictionary...")
@@ -207,7 +207,7 @@ class HerwigMultiHadronEventParser():
                     if event_line.strip():
                         if debug:
                             print(f"    processing event #{event_index}", end='\r')
-                        particles = self.__parse_particles(event_line)
+                        particles = self._parse_particles(event_line)
                         for particle in particles:
                             PIDs = particle[particle[2] == '[ ]'].to_numpy()[:, [1]].astype(float)
                             for id in PIDs: 
