@@ -259,6 +259,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             data_dir="data/Herwig",
             raw_file_list=["AllClusters_10K.dat"],
             processed_filename="herwig_multihadron_events_10K.npy",
+            dist_plots_filename="distribution_plots_10K.pdf",
             pid_map_file="pid_to_idx.pkl",
             train_val_test_split: Tuple[float, float, float] = (0.7, 0.15, 0.15),
             batch_size=32,
@@ -267,9 +268,18 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             debug=True
         ):
         super().__init__()
+
         self.data_dir = data_dir
-        self.processed_filename = os.path.join(os.path.normpath(data_dir),
-                                               "processed", processed_filename)
+        processed_path = os.path.join(os.path.normpath(data_dir), "processed")
+        if not os.path.exists(processed_path):
+            os.makedirs(processed_path)
+        self.processed_filename = os.path.join(processed_path, processed_filename)
+
+        distplots_path = os.path.join(os.path.normpath(self.data_dir), "plots")
+        if not os.path.exists(distplots_path):
+            os.makedirs(distplots_path)
+        self.distplots_path = os.path.join(distplots_path, dist_plots_filename)
+
         self.train_val_test_split = train_val_test_split
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -309,35 +319,38 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         cluster_labels = data.item()["cluster_labels"]
         n_events = len(cluster_kin)
         self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop/padding token
-
-        # Preparing distribution plots
-        distplots_path = os.path.join(os.path.normpath(self.data_dir), 
-                                      os.path.normpath("processed/distribution_plots.pdf"))
-        if not os.path.exists(distplots_path):
-            n_hadrons = [len(d) for d in hadron_kin]
-            hadron_energy = np.concatenate([d for d in hadron_kin])[:, 0]
-            cluster_energy = np.concatenate([d for d in cluster_kin])[:, 0]
-            self.__plot_dist(distplots_path, data=[n_hadrons, hadron_energy, cluster_energy],
-                xlabels=["Number of hadrons", "Energy [GeV]", "Energy [GeV]"],
-                ylabels=["Number of clusters", "Number of hadrons", "Number of clusters"],
-                legend_labels=["Hadron Distribution", "Hadron Energy Distribution",
-                            "Cluster Energy Distribution"])
-
-        # Changing hadron kinematics to the values computed for the cluster rest frame
-        hadron_kin = data.item()["had_kin_rest_frame"]
+        hadron_kin_rest_frame = data.item()["had_kin_rest_frame"]
 
         # Assigning hadrons to clusters 
         self.clusters, self.hadrons_with_types, n = self.__get_hadrons_and_clusters__(
-            n_events, cluster_kin, cluster_labels, hadron_kin, had_type_indices)
+            n_events, cluster_kin, cluster_labels, hadron_kin_rest_frame, had_type_indices)
         n_clusters_extracted_from_events = n
+        n_hadrons_per_cluster = [len(hadron_with_type[0]) for hadron_with_type in 
+                                      self.hadrons_with_types]
+        self.max_n_hadrons = max(n_hadrons_per_cluster)
+        n_hadrons_per_event = [len(d) for d in hadron_kin]
 
-        self.max_n_hadrons = max([len(hadron_with_type[0]) for hadron_with_type in 
-                                  self.hadrons_with_types])
-        
+        # Preparing distribution plots
+        if not os.path.exists(self.distplots_path):
+            hadron_energy = np.concatenate([d for d in hadron_kin])[:, 0]
+            cluster_energy = np.concatenate([d for d in cluster_kin])[:, 0]
+            self.__plot_dist(
+                filepath=self.distplots_path, 
+                data=[[n_hadrons_per_event, n_hadrons_per_cluster], [hadron_energy, cluster_energy]],
+                xlabels=[["Number of hadrons", "Number of hadrons"], 
+                         ["Energy [GeV]", "Energy [GeV]"]],
+                ylabels=[["Events", "Clusters"], 
+                         ["Hadrons", "Clusters"]],
+                legend_labels=[["Hadron Multiplicity\nDistribution per Event", 
+                               "Hadron Multiplicity\nDistribution per Cluster"],
+                               ["Hadron Energy Distribution", "Cluster Energy Distribution"]])
+
+        # Printing general statistics about events, clusters and hadrons
         print("Initial number of events:", n_events)
         print("Total number of clusters:", n_clusters_extracted_from_events)
         print("Total number of hadron types (with a stop token):", self.n_had_types)
         print("Largest number of hadrons per cluster:", self.max_n_hadrons)
+        print("Largest number of hadrons per event:", max(n_hadrons_per_event))
 
     def __get_hadrons_and_clusters__(self, n_events, cluster_kin, cluster_labels, hadron_kin, 
                                      had_type_indices):
@@ -428,19 +441,38 @@ class MultiHadronEventGANDataModule(LightningDataModule):
     def __plot_dist(self, filepath, data, xlabels, ylabels=None, legend_labels=None, labels=None):
         """ Draw distribution diagrams for a list of three data sets """
         plt.clf()
-        _, ax = plt.subplots(1, 3, figsize=(14, 4))
-        colors = ["black", "red", "blue"]
+        _, ax = plt.subplots(2, 2, figsize=(13, 8))
+        colors = [["black", "black"], ["orange", "orange"]]
 
-        for i in range(len(data)):
-            samples = data[i]
-            bins = self.__get_n_bins(samples)
-            ax[i].hist(samples, bins=bins, color=colors[i], alpha=0.7,
-                       label=legend_labels[i])
-            ax[i].set_xlabel(xlabels[i])
-            if ylabels[i] is not None:
-                ax[i].set_ylabel(ylabels[i])
-            ax[i].legend(loc='upper right')
+        for r in range(len(data)):
+            for c in range(len(data)):
+                samples = data[r][c]
+                # Setting the appropriate bin range
+                if legend_labels[r][c].startswith("Hadron Multiplicity"):
+                    sample_range = [1, max(samples)]
+                    bins = np.linspace(
+                        start=sample_range[0] - 0.5, 
+                        stop=sample_range[1] + 0.5, 
+                        num=sample_range[1] - sample_range[0] + 2, 
+                        retstep=0.5)[0]
+                else:
+                    bins = self.__get_n_bins(samples)
+
+                # Preparing a chart
+                ax[r][c].hist(samples, bins=bins, color=colors[r][c], alpha=0.7,
+                        label=legend_labels[r][c])
+                ax[r][c].set_xlabel(xlabels[r][c])
+                if ylabels[r][c] is not None:
+                    ax[r][c].set_ylabel(ylabels[r][c])
+                ax[r][c].legend(loc='upper right')
+
+                # Setting the ticks along OX if needed
+                if legend_labels[r][c].startswith("Hadron Multiplicity"):
+                    density = 2
+                    xticks = np.arange(start=sample_range[0] - 1, stop=sample_range[1] + 1, 
+                                    step=density)[1:]
+                    ax[r][c].set_xticks(xticks)
 
         plt.tight_layout()
         plt.savefig(filepath)
-        print(f"Distribution diagrams have been saved in {filepath}")
+        print("Distribution diagrams have been saved in\n   ", filepath)

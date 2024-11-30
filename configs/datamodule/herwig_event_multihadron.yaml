@@ -7,8 +7,10 @@ train_val_test_split: [0.7, 0.15, 0.15]
 
 # Raw file paths (the GAN datamodule will pass those arguments to an appropriate parser)
 raw_file_list:
-  - "AllClusters_10K.dat"
-processed_filename: "herwig_multihadron_events_10K.npy"
+  - "AllClusters_pions_1K.dat"
+processed_filename: "pions_only_events_1K.npy"
+dist_plots_filename: "dist_plots_pions_only_events_1K.pdf"
+pid_map_file: "pid_to_idx_pions_only_events_1K.pkl"
 
 # Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
 initialise_data_preparation: True
