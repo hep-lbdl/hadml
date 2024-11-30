@@ -674,8 +674,9 @@ class HerwigMultiHadronEventDataset(Dataset):
         self.n_clusters = len(clusters)
         self.max_n_hadrons = max_n_hadrons
         # Hadron padding token (zeros + special hadron type: the first one-hot position)
-        self.hadron_padding_token = torch.zeros(1, len(hadrons_with_types[0][0][0]) + n_had_types)
-        self.hadron_padding_token[0, len(hadrons_with_types[0][0][0])] = 1.0
+        self.hadron_padding_token = torch.zeros(
+            1, hadrons_with_types[0].get_kinematics_dims() + n_had_types)
+        self.hadron_padding_token[0, hadrons_with_types[0].get_kinematics_dims()] = 1.0
 
 
     def __len__(self):
@@ -694,8 +695,9 @@ class HerwigMultiHadronEventDataset(Dataset):
         # Preparing the output sentence. The hadron type is a one-hot vector.
         # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
         # max_n_hadrons = max number of hadrons produced by the heaviest cluster
-        hadrons = self.hadrons_with_types[index][0]
-        hadron_types = torch.nn.functional.one_hot(self.hadrons_with_types[index][1], self.n_had_types)
+        hadrons = self.hadrons_with_types[index].kinematics
+        hadron_types = torch.nn.functional.one_hot(
+            self.hadrons_with_types[index].types, self.n_had_types)
         disc_input = torch.cat([hadrons, hadron_types], dim=1)
         n_hadrons = len(hadrons)
         if self.max_n_hadrons - n_hadrons > 0:

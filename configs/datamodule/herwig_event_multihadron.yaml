@@ -2,15 +2,22 @@ _target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
 # Basic parameters
 batch_size: 32
-num_workers: 8
+num_workers: 0
 train_val_test_split: [0.7, 0.15, 0.15]
 
 # Raw file paths (the GAN datamodule will pass those arguments to an appropriate parser)
 raw_file_list:
-  - "AllClusters_pions_1K.dat"
-processed_filename: "pions_only_events_1K.npy"
-dist_plots_filename: "dist_plots_pions_only_events_1K.pdf"
-pid_map_file: "pid_to_idx_pions_only_events_1K.pkl"
+  # - "AllClusters_pions_1K.dat"
+  - "AllClusters_1K.dat"
+
+# processed_filename: "pions_only_events_1K.npy"
+processed_filename: "multihadron_events_1K.npy"
+
+# dist_plots_filename: "dist_plots_pions_only_events_1K.pdf"
+dist_plots_filename: "dist_plots_multihadron_events_1K.pdf"
+
+# pid_map_file: "pid_to_idx_pions_only_events_1K.pkl"
+pid_map_file: "pid_to_idx_pions_multihadron_events_1K.pkl"
 
 # Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
 initialise_data_preparation: True

@@ -9,6 +9,7 @@ from hadml.datamodules.components.utils import process_data_split, get_num_asked
 from hadml.datamodules.components.herwig_multihadron_parser import HerwigMultiHadronEventParser
 from hadml.datamodules.components.herwig import HerwigMultiHadronEventDataset
 import matplotlib.pyplot as plt
+from dataclasses import dataclass
 
 
 class GANDataProtocol(Protocol):
@@ -305,8 +306,8 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             gen_input, disc_input = one_train_batch
             print(f"\nGenerator input batch: {len(gen_input)} ([{gen_input.size()}])")
             print(f"Discriminator input batch: {len(disc_input)} ([{disc_input.size()}])")
-            print("\nGenerator input sample", gen_input[0])
-            print("\nDiscriminator input sample", disc_input[0])
+            print("\nGenerator input sample:\n", gen_input[0])
+            print("\nDiscriminator input sample:\n", disc_input[0])
 
     def prepare_data(self):
         # Load data prepared by the parser
@@ -325,8 +326,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         self.clusters, self.hadrons_with_types, n = self._get_hadrons_and_clusters__(
             n_events, cluster_kin, cluster_labels, hadron_kin_rest_frame, had_type_indices)
         n_clusters_extracted_from_events = n
-        n_hadrons_per_cluster = [len(hadron_with_type[0]) for hadron_with_type in 
-                                      self.hadrons_with_types]
+        n_hadrons_per_cluster = [len(hadron_seq.types) for hadron_seq in self.hadrons_with_types]
         self.max_n_hadrons = max(n_hadrons_per_cluster)
         n_hadrons_per_event = [len(d) for d in hadron_kin]
 
@@ -359,7 +359,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
 
         for i in range(n_events):
             cluster_in_event = []  # [cluster ... cluster]
-            hadrons_in_event = []  # [ [[hadron ... hadron][h_id ... h_id]] ... [[...][...]] ]
+            hadrons_in_event = []  # [HadronsWithTypes ... HadronsWithTypes]
 
             for j, cluster in enumerate(cluster_kin[i]):
                 # Extracting all clusters from a single event
@@ -371,7 +371,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 hadrons = torch.tensor(hadron_kin[i][cluster_idx_mask])
                 # Shifting the hadron type for an additional type assigned to a stop token (= 0) 
                 hadron_types = torch.tensor(had_type_indices[i][cluster_idx_mask]).squeeze(1) + 1 
-                hadrons_in_event.append([hadrons, hadron_types])
+                hadrons_in_event.append(HadronsWithTypes(hadrons, hadron_types))
 
             clusters += cluster_in_event
             hadrons_with_types += hadrons_in_event
@@ -476,3 +476,14 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         plt.tight_layout()
         plt.savefig(filepath)
         print("Distribution diagrams have been saved in\n   ", filepath)
+
+
+@dataclass
+class HadronsWithTypes:
+    """Class holding hadrons and their types/indices, 
+    assuming all originate from the same heavy cluster."""
+    kinematics: torch.Tensor # [h_kin ... h_kin]
+    types: torch.Tensor      # [h_id ... h_id]
+
+    def get_kinematics_dims(self) -> int:
+        return len(self.kinematics[0])
