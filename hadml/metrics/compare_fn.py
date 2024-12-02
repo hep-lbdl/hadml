@@ -1,14 +1,13 @@
 import math
 import os
 from typing import List, Tuple, Optional, Any, Dict
-
 from matplotlib import ticker
 from pytorch_lightning.core.mixins import HyperparametersMixin
-
 import numpy as np
 import matplotlib.pyplot as plt
-
 from .image_converter import fig_to_array
+from torch import Tensor
+
 
 def create_plots(nrows, ncols):
     fig, axs = plt.subplots(
@@ -263,3 +262,15 @@ class CompareParticlesEventGan(HyperparametersMixin):
         plt.close("all")
 
         return out_images
+
+
+class CompareMultiHadronEventGan():
+    def __init__(self, outdir):
+        self.outdir = os.path.normpath(outdir)
+        if not os.path.exists(self.outdir):
+            os.makedirs(self.outdir)
+
+    def __call__(self, preds: Tensor, labels: Tensor):
+        diagrams = {}
+        # TODO: add visualisation methods
+        return diagrams

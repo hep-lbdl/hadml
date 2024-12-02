@@ -1,4 +1,22 @@
 _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
-generator: hadml.models.components.decoder_transformer.DecoderTransformer
-discriminator: hadml.models.components.decoder_transformer.DecoderTransformer
 noise_dim: 4
+
+generator: 
+  _target_: hadml.models.components.decoder_transformer.DecoderTransformer
+
+discriminator: 
+  _target_: hadml.models.components.decoder_transformer.DecoderTransformer
+
+optimizer_generator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.01
+
+optimizer_discriminator:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.02
+
+comparison_fn:
+  _target_: hadml.metrics.compare_fn.CompareMultiHadronEventGan
+  outdir: ${paths.output_dir}/images

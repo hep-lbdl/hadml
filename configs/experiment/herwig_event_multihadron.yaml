@@ -11,3 +11,9 @@ defaults:
 # this allows you to overwrite only specified parameters
 task_name: herwigMultiHadronEvents
 tags: ["herwig", "MultiHadronEvents"]
+
+# Set the two flags below to False if you only want to load and preprocess the data, 
+# as well as instantiate all the necessary classes. Set both to True to start the training process 
+# and invoke testing.
+train: False
+test: False

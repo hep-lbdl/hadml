@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 
-class DecoderTransformer(nn.Module):
+class DecoderTransformer(nn.Transformer):
     """ Template for a decoder-only transformer model """
 
     def __init__(self):

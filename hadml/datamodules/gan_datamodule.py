@@ -413,7 +413,6 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             dataset=self.data_val, 
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle=True,
             generator=torch.Generator().manual_seed(42)
         )
 
@@ -422,7 +421,6 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             dataset=self.data_test, 
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle=True,
             generator=torch.Generator().manual_seed(42)
         )
     
