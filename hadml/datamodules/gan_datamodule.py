@@ -432,7 +432,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         data_len = len(data)
 
         bin_width = 3.49 * std / np.power(2 * data_len, 1/3)
-        n_bins = np.rint((max_value - min_value / bin_width))
+        n_bins = np.rint((max_value - min_value) / bin_width)
         
         return int(n_bins)
 
