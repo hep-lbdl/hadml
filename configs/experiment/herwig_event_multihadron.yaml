@@ -1,19 +1,37 @@
 # @package _global_
 
-# To execute this experiment run:
-# python src/train.py experiment=herwig_event_multihadron
+# ==================================================================================================
+#   To execute this experiment run:
+#     $ python src/train.py experiment=herwig_event_multihadron
 
+#   You may also add a logger (e.g. Weight & Biases):
+#     $ python src/train.py experiment=herwig_event_multihadron logger=wandb 
+# ================================================================================================== 
+
+# Default configuration sources
 defaults:
   - override /datamodule: herwig_event_multihadron.yaml
   - override /model: multihadron_event_gan.yaml
 
-# All parameters below will be merged with parameters from default configurations set above
-# this allows you to overwrite only specified parameters
+# Hydra logs
 task_name: herwigMultiHadronEvents
 tags: ["herwig", "MultiHadronEvents"]
 
-# Set the two flags below to False if you only want to load and preprocess the data, 
-# as well as instantiate all the necessary classes. Set both to True to start the training process 
-# and invoke testing.
-train: False
+# Training and testing invocation
+train: True
 test: False
+
+# Logger
+logger:
+  wandb:
+    # Specify the name of your W&B project
+    project: "herwigMultiHadronEvents"
+    tags: ["herwig", "MultiHadronEvents"]
+
+# Trainer
+trainer:
+  min_epochs: 1 
+  max_epochs: 1
+  num_sanity_val_steps: 0
+  accelerator: gpu
+  devices: 1

@@ -16,7 +16,3 @@ optimizer_discriminator:
   _target_: torch.optim.Adam
   _partial_: true
   lr: 0.02
-
-comparison_fn:
-  _target_: hadml.metrics.compare_fn.CompareMultiHadronEventGan
-  outdir: ${paths.output_dir}/images

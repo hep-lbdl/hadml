@@ -276,10 +276,10 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             os.makedirs(processed_path)
         self.processed_filename = os.path.join(processed_path, processed_filename)
 
-        distplots_path = os.path.join(os.path.normpath(self.data_dir), "plots")
-        if not os.path.exists(distplots_path):
-            os.makedirs(distplots_path)
-        self.distplots_path = os.path.join(distplots_path, dist_plots_filename)
+        dist_plots_path = os.path.join(os.path.normpath(self.data_dir), "plots")
+        if not os.path.exists(dist_plots_path):
+            os.makedirs(dist_plots_path)
+        self.dist_plots_path = os.path.join(dist_plots_path, dist_plots_filename)
 
         self.train_val_test_split = train_val_test_split
         self.batch_size = batch_size
@@ -331,11 +331,11 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         n_hadrons_per_event = [len(d) for d in hadron_kin]
 
         # Preparing distribution plots
-        if not os.path.exists(self.distplots_path):
+        if not os.path.exists(self.dist_plots_path):
             hadron_energy = np.concatenate([d for d in hadron_kin])[:, 0]
             cluster_energy = np.concatenate([d for d in cluster_kin])[:, 0]
             self._plot_dist(
-                filepath=self.distplots_path, 
+                filepath=self.dist_plots_path, 
                 data=[[n_hadrons_per_event, n_hadrons_per_cluster], [hadron_energy, cluster_energy]],
                 xlabels=[["Number of hadrons", "Number of hadrons"], 
                          ["Energy [GeV]", "Energy [GeV]"]],
