@@ -423,18 +423,6 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             num_workers=self.num_workers,
             generator=torch.Generator().manual_seed(42)
         )
-    
-    def _get_n_bins(self, data):
-        """ Compute Scott's normal reference rule and return
-        the number of bins for a histogram plot """
-        data = np.array(data)
-        std, max_value, min_value = data.std(), data.max(), data.min()
-        data_len = len(data)
-
-        bin_width = 3.49 * std / np.power(2 * data_len, 1/3)
-        n_bins = np.rint((max_value - min_value) / bin_width)
-        
-        return int(n_bins)
 
     def _plot_dist(self, filepath, data, xlabels, ylabels=None, legend_labels=None, labels=None):
         """ Draw distribution diagrams for a list of three data sets """
@@ -454,7 +442,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                         num=sample_range[1] - sample_range[0] + 2, 
                         retstep=0.5)[0]
                 else:
-                    bins = self._get_n_bins(samples)
+                    bins = "scott"
 
                 # Preparing a chart
                 ax[r][c].hist(samples, bins=bins, color=colors[r][c], alpha=0.7,

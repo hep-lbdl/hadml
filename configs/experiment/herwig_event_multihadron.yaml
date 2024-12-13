@@ -32,6 +32,6 @@ logger:
 trainer:
   min_epochs: 1 
   max_epochs: 1
-  num_sanity_val_steps: 0
+  num_sanity_val_steps: -1
   accelerator: gpu
   devices: 1
