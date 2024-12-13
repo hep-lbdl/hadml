@@ -43,13 +43,13 @@ class MultiHadronEventGANModule(LightningModule):
         gen_input, disc_input = batch
         device = gen_input.device
         if self.trainer.state.stage == "validate":
-            # ==========================================================================================
-            # Simulating model predictions on validation data by providing some noise to the true values
-            # ==========================================================================================
             batch_size = len(disc_input)
             n_types = len(disc_input[0, 0, 4:])
             max_n_hadrons = len(disc_input[0])
             true_types = torch.stack([torch.argmax(d[:, 4:], dim=1) for d in disc_input])
+            # ==========================================================================================
+            # Simulating model predictions on validation data by providing some noise to the true values
+            # ==========================================================================================
             distortion_noise =  torch.randint(0, n_types, (batch_size, max_n_hadrons))
             distorted_types = (true_types + distortion_noise.to(device)) % n_types
             distorted_disc_input = torch.stack([
@@ -88,17 +88,31 @@ class MultiHadronEventGANModule(LightningModule):
         if self.trainer.state.stage == "validate":
             # Handling the validation output list
             # Shape of validation_step_outputs: [n_batches, dict_key, batch_size, max_n_hadrons, features]
+            sentence_stats = {}
+            
             preds = [d["distorted_disc_input"] for d in validation_step_outputs]
-            preds = [d for pred in preds for d in pred]      # [n_hadron_sets, max_n_hadrons, features]
-            preds = [d for pred in preds for d in pred]      # [total_n_hadrons, features]
+            # [n_hadron_sets, max_n_hadrons, features]
+            preds = [d for pred in preds for d in pred]      
+            sentence_stats["pred_n_hads_per_cluster"] = [len(d[d[:, 4] == 0.0]) for d in preds]
+            sentence_stats["pred_n_pad_hads_per_cluster"] = [len(preds[0]) - n for n in 
+                                                             sentence_stats["pred_n_hads_per_cluster"]]
+            # [total_n_hadrons, features]
+            preds = [d for pred in preds for d in pred]      
             preds = torch.stack(preds)         
+            
             truths = [d["disc_input"] for d in validation_step_outputs]
-            truths = [d for truth in truths for d in truth]  # [n_hadron_sets, max_n_hadrons, features]
-            truths = [d for truth in truths for d in truth]  # [total_n_hadrons, features]
+            # [n_hadron_sets, max_n_hadrons, features]
+            truths = [d for truth in truths for d in truth]  
+            sentence_stats["true_n_hads_per_cluster"] = [len(d[d[:, 4] == 0.0]) for d in truths]
+            sentence_stats["true_n_pad_hads_per_cluster"] = [len(truths[0]) - n for n in 
+                                                             sentence_stats["true_n_hads_per_cluster"]]
+            # [total_n_hadrons, features]
+            truths = [d for truth in truths for d in truth]  
             truths = torch.stack(truths)         
 
             # Preparing diagrams
-            images = self._prepare_plots(predictions=preds.cpu(), truths=truths.cpu())
+            images = self._prepare_plots(predictions=preds.cpu(), truths=truths.cpu(),
+                                         sentence_stats=sentence_stats)
         
         elif self.trainer.state.stage == "sanity_check":
             gen_input = [d["gen_input"] for d in validation_step_outputs]
@@ -117,7 +131,7 @@ class MultiHadronEventGANModule(LightningModule):
                 caption=list(images.keys()),
             )
 
-    def _prepare_plots(self, predictions=None, truths=None, clusters=None):
+    def _prepare_plots(self, predictions=None, truths=None, sentence_stats=None, clusters=None):
         """ Prepare histograms and other charts using the data received from validation_epoch_end().
         Diagrams for the sanity check (clusters) are prepared once only before training. All the 
         other ones (hadrons) are drawn each time validation_epoch_end() is called. """
@@ -126,7 +140,7 @@ class MultiHadronEventGANModule(LightningModule):
         if predictions is not None and truths is not None:
             preds_kin, preds_types = predictions[:, :4], torch.argmax(predictions[:, 4:], dim=1) - 1
             truths_kin, truths_types = truths[:, :4], torch.argmax(truths[:, 4:], dim=1) - 1
-            
+
             # Hadron type histogram
             sample_range = [1, preds_types.max()]
             bins = np.linspace(
@@ -136,14 +150,8 @@ class MultiHadronEventGANModule(LightningModule):
                 retstep=0.5)[0]
             n_types = truths_types.max() + 1
             density = n_types // 25 if n_types // 25 > 0 else 1
-            
             fig = plt.figure(figsize=(9, 6))
             plt.title("Hadron Type Distribution")
-            bins = np.linspace(
-                start=sample_range[0] - 0.5, 
-                stop=sample_range[1] + 0.5, 
-                num=sample_range[1] - sample_range[0] + 2, 
-                retstep=0.5)[0]
             plt.hist(truths_types, bins=bins, color="black", histtype="step", label="True")
             plt.hist(preds_types, bins=bins, color="#AABA9E", label="Generated")
             plt.ylabel("Hadrons")
@@ -153,19 +161,16 @@ class MultiHadronEventGANModule(LightningModule):
             plt.legend()
             plt.tight_layout()
             diagrams["hadron_type_hist"] = fig_to_array(fig, tight_layout=False)
-            plt.show()
 
             # Hadron energy and momentum histogram 
             fig, axs = plt.subplots(2, 2, figsize=(12, 9))
             fig.subplots_adjust(wspace=0.2, hspace=0.35)        
             axs[0][0].set_title("Hadron Energy Distribution")
-    
             labels = ["Generated", "True"]
             (_, bins, _) = axs[0][0].hist(truths_kin[:, 0], bins="scott", color="black", 
                                         label=labels[1], histtype="step")
             axs[0][0].hist(preds_kin[:, 0], bins=bins, color="#AEC5EB", label=labels[0])
             axs[0][0].set_xlabel("Energy (Cluster Rest Frame)")
-
             axis = ['x', 'y', 'z']
             for row in range(0, 2):
                 for col in range(0, 2):
@@ -178,15 +183,37 @@ class MultiHadronEventGANModule(LightningModule):
                                                     color="black", label=labels[1], histtype="step")
                     axs[row][col].hist(preds_kin[:, feature], bins=bins, color="#F9DEC9", 
                                     label=labels[0])
-
             for row in range(0, 2):
                 for col in range(0, 2):
                     axs[row][col].set_ylabel("Hadrons (Log Scale)")
                     axs[row][col].set_yscale("log")
                     axs[row][col].legend(loc='upper right')
-            plt.show()
-            
+            fig.suptitle("Hadron Kinematics Distribution")
             diagrams["hadron_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
+
+            # Hadron and padding token multiplicity
+            n_max_hads = sentence_stats["true_n_hads_per_cluster"][0] + \
+                            sentence_stats["true_n_pad_hads_per_cluster"][0]
+            fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+            bins = np.linspace(start=-0.5, stop=n_max_hads+0.5, num=n_max_hads+2, retstep=0.5)[0]
+            datatype = ["true", "pred"]
+            labels = ["True", "Generated"]
+            colours = ["black", "#DE3C4B"]
+            for col in range(0, 2):
+                for i in range(0, 2):
+                    if col == 0:
+                        axs[col].hist(sentence_stats[f"{datatype[i]}_n_hads_per_cluster"], 
+                                            bins=bins, color=colours[i], label=labels[i], rwidth=0.9)
+                        axs[col].set_xlabel("Number of hadrons")
+                    else:
+                        axs[col].hist(sentence_stats[f"{datatype[i]}_n_pad_hads_per_cluster"], 
+                                            bins=bins, color=colours[i], label=labels[i], rwidth=0.9)
+                        axs[col].set_xlabel("Number of padding tokens")
+                axs[col].legend()
+                axs[col].set_ylabel("Sentences")
+            fig.suptitle("Sentence Statistics")
+            plt.tight_layout()
+            diagrams["sentence_statistics_hist"] = fig_to_array(fig, tight_layout=False)
         
         elif clusters is not None:
             diagrams = {}
@@ -197,14 +224,13 @@ class MultiHadronEventGANModule(LightningModule):
             # Cluster kinematics histograms
             fig, axs = plt.subplots(1, 3, figsize=(15, 5))
             axis = ['x', 'y', 'z']
-            for row in range(0, 3):
-                axs[row].hist(kinematics[:, row], bins="auto", color="black")
-                axs[row].set_xlabel(f"Momentum ({axis[row].capitalize()})")
-                axs[row].set_ylabel("Clusters")
+            for col in range(0, 3):
+                axs[col].hist(kinematics[:, col], bins="auto", color="#AB92BF")
+                axs[col].set_xlabel(f"Momentum ({axis[col].capitalize()})")
+                axs[col].set_ylabel("Clusters")
             fig.suptitle("Cluster Momentum Distribution")
             plt.tight_layout()
             diagrams["cluster_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
-            plt.show()
 
             # Quark types and angles
             count = Counter(quark_types.flatten().tolist())
@@ -212,7 +238,6 @@ class MultiHadronEventGANModule(LightningModule):
             pids_to_idx = {pids: i for i, pids in enumerate(quark_pids)}
             n_idx = len(pids_to_idx)
             bins = np.linspace(start=-0.5, stop=n_idx+0.5, num=n_idx+2, retstep=0.5)[0]
-
             fig, axs = plt.subplots(2, 2, figsize=(9, 9))
             angles = ["phi", "theta"]
             for row in range(0, 2):
@@ -234,6 +259,5 @@ class MultiHadronEventGANModule(LightningModule):
             fig.suptitle("Quark Type and Momentum Distribution")
             plt.tight_layout()
             diagrams["quarks_features_hist"] = fig_to_array(fig, tight_layout=False)    
-            plt.show()
             
         return diagrams
