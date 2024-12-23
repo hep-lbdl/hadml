@@ -1,9 +1,11 @@
 _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
 noise_dim: 4
+loss_type: "wasserstein"
 
 generator: 
   _target_: hadml.models.components.encoder_transformer.Generator
   pid_map_filepath: "${datamodule.data_dir}/processed/${datamodule.pid_map_file}"
+  noise_dim: ${model.noise_dim}
 
 discriminator: 
   _target_: hadml.models.components.encoder_transformer.Discriminator
