@@ -2,12 +2,10 @@ _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
 noise_dim: 4
 
 generator: 
-  _target_: hadml.models.components.encoder_transformer.Generator
-  pid_map_filepath: "${datamodule.data_dir}/processed/${datamodule.pid_map_file}"
+  _target_: hadml.models.components.decoder_transformer.DecoderTransformer
 
 discriminator: 
-  _target_: hadml.models.components.encoder_transformer.Discriminator
-  pid_map_filepath: "${datamodule.data_dir}/processed/${datamodule.pid_map_file}"
+  _target_: hadml.models.components.decoder_transformer.DecoderTransformer
 
 optimizer_generator:
   _target_: torch.optim.Adam
