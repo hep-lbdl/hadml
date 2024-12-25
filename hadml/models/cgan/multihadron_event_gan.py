@@ -1,12 +1,13 @@
 import torch
-from torch.optim import Optimizer
-from torchmetrics import MeanMetric
 from pytorch_lightning import LightningModule
 from utils.utils import conditional_cat
+from typing import Optional, Callable
 from metrics.media_logger import log_images
+from torch.optim import Optimizer
+import matplotlib.pyplot as plt
+import numpy as np
 from metrics.image_converter import fig_to_array
 from collections import Counter
-import numpy as np, matplotlib.pyplot as plt
 
 
 class MultiHadronEventGANModule(LightningModule):
@@ -17,15 +18,12 @@ class MultiHadronEventGANModule(LightningModule):
         discriminator: torch.nn.Module,
         optimizer_generator: Optimizer,
         optimizer_discriminator: Optimizer,
-        noise_dim: int,
-        loss_type: str
+        noise_dim: int
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["generator", "discriminator"])
         self.generator = generator
         self.discriminator = discriminator
-        self.train_gen_loss = MeanMetric()
-        self.train_disc_loss = MeanMetric()
 
     def forward(self, clusters):
         generator_input = conditional_cat(clusters, self._generate_noise(len(clusters)))
@@ -36,51 +34,11 @@ class MultiHadronEventGANModule(LightningModule):
         pass
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        gen_input, real_hadrons = batch
-        noise = torch.randn(*gen_input.size()[:2], self.hparams.noise_dim)
-        fake_hadrons = self.generator(noise.to(gen_input.device), gen_input)
-        score_for_fake = self.discriminator(fake_hadrons)
-        if optimizer_idx == 0:
-            # Training the generator
-            generator_loss = self._generator_loss(score_for_fake)
-            self.train_gen_loss(generator_loss)
-            self.log("generator_loss", generator_loss, prog_bar=True)
-            loss = generator_loss
-        else:
-            # Training the discriminator
-            score_for_real = self.discriminator(real_hadrons)
-            discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
-            # TODO: grad_penalty
-            # ...
-            self.log("discriminator_loss", discriminator_loss, prog_bar=True)
-            loss = discriminator_loss
-        return {"loss": loss}
+        # Debugging: batch_size=1, num_workers=0:
+        # batch[0] - generator input
+        # batch[1] - ideal generator output (discriminator input)
+        return None
 
-    def _generator_loss(self, score):
-        loss_type = self.hparams.loss_type
-        if loss_type == "wasserstein":
-            loss_gen = -score.mean(0).view(1)
-        elif loss_type == "bce":
-            loss_gen = torch.nn.functional.binary_cross_entropy_with_logits(
-                score, torch.ones_like(score))
-        elif loss_type == "ls":
-            loss_gen = 0.5 * ((score - 1) ** 2).mean(0).view(1)
-        return loss_gen
-
-    def _discriminator_loss(self, score_for_real, score_for_fake):
-        loss_type = self.hparams.loss_type
-        if loss_type == "wasserstein":
-            loss_disc = score_for_fake.mean(0).view(1) - score_for_real.mean(0).view(1)
-        elif loss_type == "bce":
-            loss_disc = torch.nn.functional.binary_cross_entropy_with_logits(
-                score_for_real, torch.ones_like(score_for_real)) + \
-                torch.nn.functional.binary_cross_entropy_with_logits(
-                    score_for_fake, torch.zeros_like(score_for_fake))
-        elif loss_type == "ls":
-            loss_disc = 0.5 * ((score_for_real - 1)**2).mean(0).view(1) + \
-                0.5 * (score_for_fake**2).mean(0).view(1)
-        return loss_disc
-    
     def validation_step(self, batch, batch_idx):
         gen_input, disc_input = batch
         device = gen_input.device
