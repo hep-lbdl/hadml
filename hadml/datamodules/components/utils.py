@@ -2,7 +2,7 @@ import itertools
 import pickle
 from functools import reduce
 from typing import Tuple, List, Optional
-
+import warnings
 import numpy as np
 import pandas as pd
 
@@ -70,7 +70,13 @@ def create_boost_fn(cluster_4vec: np.ndarray):
     velocity = p0 / gamma.reshape(-1, 1) / mass.reshape(-1, 1)
     del mass, p0
     v_mag = np.sqrt((velocity**2).sum(axis=1))
-    n = velocity / v_mag.reshape(-1, 1)
+
+    # The RuntimeWarning related to NaN values in the "velocity" or "v_mag" arrays can be safely 
+    # ignored, as the line n[np.isnan(n)] below replaces those vectors with zero vectors. 
+    # Ignoring the warning prevents overhead caused by frequent printing to the standard output.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        n = velocity / v_mag.reshape(-1, 1)
     n[np.isnan(n)] = 0
     del velocity
 

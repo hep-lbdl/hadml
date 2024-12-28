@@ -5,11 +5,11 @@ import pickle
 from typing import Dict, Optional, Tuple
 import glob
 import math
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 import torch
+
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.core.mixins import HyperparametersMixin
 
@@ -25,10 +25,10 @@ from hadml.datamodules.components.utils import (
 
 from torch_geometric.data import Data
 from torch_geometric.data import InMemoryDataset
-
 from torch.utils.data import Dataset as TorchDataset
+from torch.utils.data import Dataset
 
-pid_map_fname = "pids_to_ix.pkl"
+pid_map_fname = "pid_to_idx.pkl"
 
 
 class Herwig(LightningDataModule):
@@ -660,114 +660,49 @@ class HerwigEventDataset(InMemoryDataset):
         return data
 
 
-class HerwigEventMultiHadronDataset(InMemoryDataset):
-    def __init__(
-        self,
-        root,
-        transform=None,
-        pre_transform=None,
-        pre_filter=None,
-        raw_file_list=None,
-        processed_file_name="herwig_graph_data.pt",
-    ):
+class HerwigMultiHadronEventDataset(Dataset):
+    """ This class takes preprocessed multihadron events (i.e. clusters and multiple hadrons having 
+    different types transformed to indices) and provide the DataLoader class object with prepared 
+    generator and discriminator sentences. """
 
-        self.raw_file_list = []
-        for pattern in raw_file_list:
-            self.raw_file_list += glob.glob(os.path.join(root, "raw", pattern))
-        self.raw_file_list = [
-            os.path.basename(raw_file) for raw_file in self.raw_file_list
-        ]
-        self.processed_file_name = processed_file_name
+    def __init__(self, n_had_types, clusters, hadrons_with_types, max_n_hadrons):
+        super().__init__()
 
-        if root:
-            pids_map_path = os.path.join(root, pid_map_fname)
-        if os.path.exists(pids_map_path):
-            print("Loading existing pids map: ", pids_map_path)
-            self.pids_to_ix = pickle.load(open(pids_map_path, "rb"))
-        else:
-            raise RuntimeError("No pids map found at", pids_map_path)
+        self.n_had_types = n_had_types
+        self.hadrons_with_types = hadrons_with_types
+        self.clusters = clusters
+        self.n_clusters = len(clusters)
+        self.max_n_hadrons = max_n_hadrons
+        # Hadron padding token (zeros + special hadron type: the first one-hot position)
+        self.hadron_padding_token = torch.zeros(
+            1, hadrons_with_types[0].get_kinematics_dims() + n_had_types)
+        self.hadron_padding_token[0, hadrons_with_types[0].get_kinematics_dims()] = 1.0
 
-        super().__init__(root, transform, pre_transform, pre_filter)
 
-        self.data, self.slices = torch.load(self.processed_paths[0])
+    def __len__(self):
+        return self.n_clusters
 
-    @property
-    def raw_file_names(self):
-        if self.raw_file_list is not None:
-            return self.raw_file_list
-        return ["ClusterTo2Pi0_new.dat"]
 
-    @property
-    def processed_file_names(self):
-        return [self.processed_file_name]
+    def __getitem__(self, index):
+        """ This method is mainly responsible for tokenisation and building sentences containing 
+        "cluster/hadron padding tokens". It returns a pair of prepared sentences. """
 
-    def download(self):
-        pass
+        # Preparing the input sentence. Tokens then need to be concatenated with noise.
+        # [[cluster_kin][cluster_kin]...[padding_token]] 
+        # max_n_hadrons = max number of hadrons produced by the heaviest cluster
+        gen_input = torch.stack([self.clusters[index] for _ in range(self.max_n_hadrons)])
 
-    def process(self):
-        all_data = []
-        for raw_path in self.raw_paths:
-            with open(raw_path) as f:
-                data_list = [self._create_data(line) for line in f if line.strip()]
-
-            if self.pre_filter is not None:
-                data_list = [data for data in data_list if self.pre_filter(data)]
-
-            if self.pre_transform is not None:
-                data_list = [self.pre_transform(data) for data in data_list]
-
-            all_data += data_list
-
-        data, slices = self.collate(all_data)
-        torch.save((data, slices), self.processed_paths[0])
-
-    def _create_data(self, line):
-        items = line.split("|")[:-1]
-        clusters = [pd.Series(c.split(";")[:-1]).str.split(',', expand=True) for c in items]
-
-        q1s, q2s, cs, hadrons, cluster_labels, cs_for_hadrons = [], [], [], [], [], []
-        for i, cluster in enumerate(clusters):
-            # select the two quarks and the cluster /heavy cluster from the cluster
-            q1 = cluster.iloc[0].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
-            q2 = cluster.iloc[1].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
-            c = cluster.iloc[2].to_numpy()[[1,3,4,5,6]].astype(float).reshape(1, -1)
-            q1s.append(q1)
-            q2s.append(q2)
-            cs.append(c)
-            # select the final states from the cluster
-            hadron = cluster[cluster[2] == '[ ]'].to_numpy()[:, [1,3,4,5,6]].astype(float)
-            hadrons.append(hadron)
-            # assign cluster label to all hadrons
-            cluster_labels += [i] * len(hadron)
-            c_for_hadrons = c.repeat(len(hadron), axis=0)
-            cs_for_hadrons.append(c_for_hadrons)
-        # concatenate all clusters
-        q1s = np.concatenate(q1s)
-        q2s = np.concatenate(q2s)
-        cs = np.concatenate(cs)
-        hadrons = np.concatenate(hadrons)
-        cs_for_hadrons = np.concatenate(cs_for_hadrons)
-        cond_kin = np.concatenate([cs[:, [1,2,3,4]], q1s[:, [1,2,3,4]], q2s[:, [1,2,3,4]]], axis=1)
-        had_kin = np.concatenate([cs_for_hadrons[:, [1,2,3,4]], hadrons[:, [1,2,3,4]]], axis=1)
-        cond_kin_rest_frame = boost(cond_kin)
-        had_kin_rest_frame = torch.from_numpy(boost(had_kin)[:, 4:])
-        had_kin = torch.from_numpy(had_kin[:, 4:])
-
-        q_phi, q_theta = get_angles(cond_kin_rest_frame[:, 4:8])
-        q_momenta = np.stack([q_phi, q_theta], axis=1)
-        cond_info = np.concatenate([cs[:, [1,2,3,4]], q1s[:, :1], q2s[:, :1], q_momenta], axis=1)
-        cond_info = torch.from_numpy(cond_info.astype(np.float32))
-
-        # convert particle IDs to indices
-        # then these indices can be embedded in N dim. space
-        had_type_indices = torch.from_numpy(np.vectorize(self.pids_to_ix.get)(hadrons[:, [0]].astype(np.int16)))
-
-        data = Data(
-            x=cond_info.float(),
-            had_kin_rest_frame=had_kin_rest_frame.float(),
-            had_kin=had_kin.float(),
-            had_type_indices=had_type_indices,
-            cluster_labels=torch.tensor(cluster_labels).int(),
-            edge_index=None,
-        )
-        return data
+        # Preparing the output sentence. The hadron type is a one-hot vector.
+        # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
+        # max_n_hadrons = max number of hadrons produced by the heaviest cluster
+        hadrons = self.hadrons_with_types[index].kinematics
+        hadron_types = torch.nn.functional.one_hot(
+            self.hadrons_with_types[index].types, self.n_had_types)
+        disc_input = torch.cat([hadrons, hadron_types], dim=1)
+        n_hadrons = len(hadrons)
+        if self.max_n_hadrons - n_hadrons > 0:
+            hadron_padding_tokens = torch.cat([self.hadron_padding_token 
+                                            for _ in range(self.max_n_hadrons - n_hadrons)])
+            disc_input = torch.cat([disc_input, hadron_padding_tokens])
+        
+        return gen_input, disc_input

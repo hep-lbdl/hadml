@@ -1,14 +1,13 @@
 import math
 import os
 from typing import List, Tuple, Optional, Any, Dict
-
 from matplotlib import ticker
 from pytorch_lightning.core.mixins import HyperparametersMixin
-
 import numpy as np
 import matplotlib.pyplot as plt
-
 from .image_converter import fig_to_array
+from torch import Tensor
+
 
 def create_plots(nrows, ncols):
     fig, axs = plt.subplots(

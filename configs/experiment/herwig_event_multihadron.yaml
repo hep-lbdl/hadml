@@ -1,79 +1,37 @@
 # @package _global_
 
-# start the environment
-# conda-start torch
+# ==================================================================================================
+#   To execute this experiment run:
+#     $ python src/train.py experiment=herwig_event_multihadron
 
-# to execute this experiment run:
-# python src/train.py experiment=herwig_event
-## to add a logger
-# python src/train.py experiment=herwig_all_hadron logger=wandb
+#   You may also add a logger (e.g. Weight & Biases):
+#     $ python src/train.py experiment=herwig_event_multihadron logger=wandb 
+# ================================================================================================== 
 
-## with training techniques
-# python src/train.py experiment=herwig_all_hadron logger=wandb +trainer.gradient_clip_val=0.5
-
+# Default configuration sources
 defaults:
   - override /datamodule: herwig_event_multihadron.yaml
-  - override /model: cond_event_gan.yaml
-  - override /callbacks: default.yaml
-  - override /trainer: gpu.yaml
+  - override /model: multihadron_event_gan.yaml
 
-# all parameters below will be merged with parameters from default configurations set above
-# this allows you to overwrite only specified parameters
-task_name: herwigEvent
-tags: ["herwig", "Events"]
+# Hydra logs
+task_name: herwigMultiHadronEvents
+tags: ["herwig", "MultiHadronEvents"]
 
+# Training and testing invocation
+train: True
+test: False
+
+# Logger
 logger:
   wandb:
-    project: "herwigEventsMultiHadron"
-    tags: ["herwig", "Events"]
-    name: fit_to_nominal
+    # Specify the name of your W&B project
+    project: "herwigMultiHadronEvents"
+    tags: ["herwig", "MultiHadronEvents"]
 
-seed: 12345
-
+# Trainer
 trainer:
-  max_epochs: 6000
-  log_every_n_steps: 1
-
-callbacks:
-  model_checkpoint:
-    monitor: "val/min_avg_wd"
-    mode: "min"
-    save_top_k: 5
-    save_last: True
-  
-# ## override /datamodule:
-datamodule:
-  batch_size: 10000
-  num_workers: 8
-  pin_memory: True
-  # train_val_test_split: [200000, 30000, 30000]
-  train_val_test_split: [6, 2, 2]
-
-
-# ## override /model:
-model:
-  noise_dim: 10
-  generator:
-    hidden_dims: [256, 256]
-
-  discriminator:
-    _target_: hadml.models.components.deep_set.DeepSetModule
-
-  optimizer_generator:
-    lr: 0.000001
-
-  optimizer_discriminator:
-    lr: 0.0001
-
-  num_critics: 1
-  num_gen: 5
-
-# cond_dataset:
-#   raw_file_list:
-#     - "ClusterTo2Pi0_nominal.dat"
-#   processed_file_name: "herwig_graph_cond_data.pt"
-
-# obs_dataset:
-#   raw_file_list:
-#     - "ClusterTo2Pi0_nominal_2.dat"
-#   processed_file_name: "herwig_graph_obs_data.pt"
+  min_epochs: 1 
+  max_epochs: 1
+  num_sanity_val_steps: -1
+  accelerator: gpu
+  devices: 1
