@@ -705,4 +705,4 @@ class HerwigMultiHadronEventDataset(Dataset):
                                             for _ in range(self.max_n_hadrons - n_hadrons)])
             disc_input = torch.cat([disc_input, hadron_padding_tokens])
         
-        return gen_input, disc_input
+        return gen_input.to(torch.float32), disc_input.to(torch.float32)
