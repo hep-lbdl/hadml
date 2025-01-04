@@ -1,6 +1,7 @@
 import pyrootutils
 import wandb
 
+
 root = pyrootutils.setup_root(
     search_from=__file__,
     indicator=[".git", "pyproject.toml"],

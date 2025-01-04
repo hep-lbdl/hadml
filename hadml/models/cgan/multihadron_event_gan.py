@@ -2,7 +2,7 @@ import torch
 from torch.optim import Optimizer
 from torchmetrics import MeanMetric
 from pytorch_lightning import LightningModule
-from utils.utils import conditional_cat
+from utils.utils import conditional_cat, get_wasserstein_grad_penalty, get_r1_grad_penalty
 from metrics.media_logger import log_images
 from metrics.image_converter import fig_to_array
 from collections import Counter
@@ -26,6 +26,8 @@ class MultiHadronEventGANModule(LightningModule):
         self.discriminator = discriminator
         self.train_gen_loss = MeanMetric()
         self.train_disc_loss = MeanMetric()
+        self.val_gen_loss = MeanMetric()
+        self.val_disc_loss = MeanMetric()
 
     def forward(self, clusters):
         generator_input = conditional_cat(clusters, self._generate_noise(len(clusters)))
@@ -50,10 +52,7 @@ class MultiHadronEventGANModule(LightningModule):
             # Training the discriminator
             score_for_real = self.discriminator(real_hadrons)
             discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
-            # TODO: grad_penalty
-            # ...
             self.log("discriminator_loss", discriminator_loss, prog_bar=True)
-            loss = discriminator_loss
         return {"loss": loss}
 
     def _generator_loss(self, score):
@@ -83,29 +82,12 @@ class MultiHadronEventGANModule(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         gen_input, disc_input = batch
-        device = gen_input.device
         if self.trainer.state.stage == "validate":
-            batch_size = len(disc_input)
-            n_types = len(disc_input[0, 0, 4:])
-            max_n_hadrons = len(disc_input[0])
-            true_types = torch.stack([torch.argmax(d[:, 4:], dim=1) for d in disc_input])
-            # ==========================================================================================
-            # Simulating model predictions on validation data by providing some noise to the true values
-            # ==========================================================================================
-            distortion_noise =  torch.randint(0, n_types, (batch_size, max_n_hadrons))
-            distorted_types = (true_types + distortion_noise.to(device)) % n_types
-            distorted_disc_input = torch.stack([
-                torch.column_stack([
-                    d[:, :4] * torch.rand(1).to(device),           # scaling kinematics (Gaussian noise)
-                    torch.nn.functional.one_hot(d_type,            # randomly shifted types
-                                                num_classes=n_types)            
-                ]) for d, d_type in zip(disc_input, distorted_types)
-            ])
-            # ==========================================================================================
-            return {"distorted_disc_input": distorted_disc_input, "disc_input": disc_input}
-        
+            noise = torch.randn(*gen_input.size()[:2], self.hparams.noise_dim)
+            gen_output = self.generator(noise.to(gen_input.device), gen_input).detach()
+            return {"gen_output": gen_output, "disc_input": disc_input.detach()}
         elif self.trainer.state.stage == "sanity_check":
-            return {"gen_input": gen_input[:, 0, :]}
+            return {"gen_input": gen_input[:, 0, :].detach()}
 
     def test_step(self, batch, batch_idx):
         pass
@@ -132,7 +114,7 @@ class MultiHadronEventGANModule(LightningModule):
             # Shape of validation_step_outputs: [n_batches, dict_key, batch_size, max_n_hadrons, features]
             sentence_stats = {}
             
-            preds = [d["distorted_disc_input"] for d in validation_step_outputs]
+            preds = [d["gen_output"] for d in validation_step_outputs]
             # [n_hadron_sets, max_n_hadrons, features]
             preds = [d for pred in preds for d in pred]      
             sentence_stats["pred_n_hads_per_cluster"] = [len(d[d[:, 4] == 0.0]) for d in preds]

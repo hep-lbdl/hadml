@@ -11,7 +11,7 @@ class Generator(torch.nn.Module):
         n_quarks=2,             # Number of quark types in cluster_kins_dim
         quark_types=16,         # Quark PIDs: (+/-) 1-8 -> transformation -> 0-16
         hadron_kins_dim=4,      # Hadron four-momentum
-        embedding_dim=128,      # Arbitrary number (but the same for the discriminator)
+        embedding_dim=32,       # Arbitrary number (but the same for the discriminator)
         quark_embedding_dim=4,  # Arbitrary number (quark embedding dimensionality)
         n_heads=8,              # Encoder architecture hyperparameter
         pid_map_filepath=None   # For getting information about the number of hadron most common IDs
@@ -47,7 +47,7 @@ class Discriminator(torch.nn.Module):
     def __init__(
         self,
         hadron_kins_dim=4,      # Hadron four-momentum
-        embedding_dim=128,      # Arbitrary number (but the same for the discriminator)
+        embedding_dim=32,       # Arbitrary number (but the same for the discriminator)
         n_heads=8,              # Encoder architecture hyperparameter
         pid_map_filepath=None   # For getting information about the number of hadron most common IDs
     ):
