@@ -53,6 +53,7 @@ class MultiHadronEventGANModule(LightningModule):
             score_for_real = self.discriminator(real_hadrons)
             discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
             self.log("discriminator_loss", discriminator_loss, prog_bar=True)
+            loss = discriminator_loss
         return {"loss": loss}
 
     def _generator_loss(self, score):
