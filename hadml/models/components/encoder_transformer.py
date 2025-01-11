@@ -17,6 +17,7 @@ class Generator(torch.nn.Module):
         pid_map_filepath=None   # For getting information about the number of hadron most common IDs
     ):
         super().__init__()
+        self.hadron_kins_dim = hadron_kins_dim
         with open(os.path.normpath(pid_map_filepath), "rb") as f:
             n_hadron_types = len(pickle.load(f)) + 1
         self.quark_type_embedding_layer = torch.nn.Embedding(quark_types, quark_embedding_dim)

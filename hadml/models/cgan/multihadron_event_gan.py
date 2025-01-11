@@ -2,11 +2,12 @@ import torch
 from torch.optim import Optimizer
 from torchmetrics import MeanMetric
 from pytorch_lightning import LightningModule
-from utils.utils import conditional_cat, get_wasserstein_grad_penalty, get_r1_grad_penalty
+from utils.utils import conditional_cat, get_r1_grad_penalty
 from metrics.media_logger import log_images
 from metrics.image_converter import fig_to_array
 from collections import Counter
 import numpy as np, matplotlib.pyplot as plt
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 
 class MultiHadronEventGANModule(LightningModule):
@@ -18,7 +19,9 @@ class MultiHadronEventGANModule(LightningModule):
         optimizer_generator: Optimizer,
         optimizer_discriminator: Optimizer,
         noise_dim: int,
-        loss_type: str
+        loss_type: str,
+        r1_reg: float,
+        target_gumbel_temp: float = 0.3
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["generator", "discriminator"])
@@ -28,19 +31,24 @@ class MultiHadronEventGANModule(LightningModule):
         self.train_disc_loss = MeanMetric()
         self.val_gen_loss = MeanMetric()
         self.val_disc_loss = MeanMetric()
+        self.current_gumbel_temp = 1.0
 
     def forward(self, clusters):
-        generator_input = conditional_cat(clusters, self._generate_noise(len(clusters)))
-        generated_hadrons = self.hparams.generator(generator_input)
+        noise = self._generate_noise(*clusters.size()[:2])
+        generated_hadrons = self.generator(noise.to(clusters.device), clusters)
+        hadron_kins_dim = self.generator.hadron_kins_dim
+        generated_hadrons[:, :, hadron_kins_dim:] = torch.nn.functional.gumbel_softmax(
+            generated_hadrons[:, :, hadron_kins_dim:], self.current_gumbel_temp)
         return generated_hadrons
     
     def setup(self, stage=None):
         pass
 
     def training_step(self, batch, batch_idx, optimizer_idx):
+        # Updating the Gumbel Softmax temperature
+        self._update_gumbel_temp()
         gen_input, real_hadrons = batch
-        noise = torch.randn(*gen_input.size()[:2], self.hparams.noise_dim)
-        fake_hadrons = self.generator(noise.to(gen_input.device), gen_input)
+        fake_hadrons = self(gen_input)
         score_for_fake = self.discriminator(fake_hadrons)
         if optimizer_idx == 0:
             # Training the generator
@@ -53,7 +61,14 @@ class MultiHadronEventGANModule(LightningModule):
             score_for_real = self.discriminator(real_hadrons)
             discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
             self.log("discriminator_loss", discriminator_loss, prog_bar=True)
-            loss = discriminator_loss
+            # Computing the R1 gradient penalty
+            r1_grad_penalty = 0.0
+            if self.hparams.r1_reg > 0:
+                with sdpa_kernel(SDPBackend.MATH):
+                    r1_grad_penalty = (
+                        get_r1_grad_penalty(self.discriminator, [real_hadrons]) * self.hparams.r1_reg)
+                self.log("r1_grad_penalty", r1_grad_penalty)
+            loss = discriminator_loss + r1_grad_penalty
         return {"loss": loss}
 
     def _generator_loss(self, score):
@@ -84,7 +99,7 @@ class MultiHadronEventGANModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         gen_input, disc_input = batch
         if self.trainer.state.stage == "validate":
-            noise = torch.randn(*gen_input.size()[:2], self.hparams.noise_dim)
+            noise = self._generate_noise(*gen_input.size()[:2])
             gen_output = self.generator(noise.to(gen_input.device), gen_input).detach()
             return {"gen_output": gen_output, "disc_input": disc_input.detach()}
         elif self.trainer.state.stage == "sanity_check":
@@ -98,9 +113,19 @@ class MultiHadronEventGANModule(LightningModule):
         disriminator_opt = self.hparams.optimizer_discriminator(params=self.discriminator.parameters())
         return generator_opt, disriminator_opt
     
-    def _generate_noise(self, n_tokens):
-        return torch.randn(n_tokens, self.hparams.noise_dim)
+    def _generate_noise(self, batch_size, n_tokens):
+        return torch.randn(batch_size, n_tokens, self.hparams.noise_dim)
     
+    def _update_gumbel_temp(self):
+        progress = self.trainer.global_step / (0.8 * self.trainer.max_epochs * \
+            len(self.hparams.datamodule.train_dataloader()))
+        if progress < 1.0:
+            progress = 1 - (1 - progress)**2
+        else:
+            progress = 1.0
+        self.current_gumbel_temp = 1.0 - (1 - self.hparams.target_gumbel_temp) * progress
+        self.log("gumbel", self.current_gumbel_temp)
+
     def _compare(self, predictions, truths):
         images = self._prepare_plots(predictions, truths)
         # Attributes self.logger and self.logger.experiment are defined by the logger passed
