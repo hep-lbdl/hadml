@@ -25,7 +25,7 @@ class Generator(torch.nn.Module):
             noise_dim + cluster_kins_dim - n_quarks + n_quarks * quark_embedding_dim, embedding_dim
         )
         self.output_embedding_layer = torch.nn.Linear(embedding_dim, hadron_kins_dim + n_hadron_types)
-        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=n_heads)
+        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=n_heads, batch_first=True)
         self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=6)
 
     def forward(self, noise, cluster_kins):
@@ -57,7 +57,7 @@ class Discriminator(torch.nn.Module):
             n_hadron_types = len(pickle.load(f)) + 1
         self.input_embedding_layer = torch.nn.Linear(hadron_kins_dim + n_hadron_types, embedding_dim)
         self.output_embedding_layer = torch.nn.Linear(embedding_dim, 1)
-        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=n_heads)
+        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=n_heads, batch_first=True)
         self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=6)
 
     def forward(self, hadrons):

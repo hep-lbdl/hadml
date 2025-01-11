@@ -1,6 +1,6 @@
 _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
 noise_dim: 4
-loss_type: "wasserstein"
+loss_type: "bce"
 r1_reg: 1500
 target_gumbel_temp: 0.01
 
