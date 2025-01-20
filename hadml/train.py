@@ -36,7 +36,6 @@ root = pyrootutils.setup_root(
 # ------------------------------------------------------------------------------------ #
 
 from typing import List, Optional, Tuple
-
 import hydra
 import pytorch_lightning as pl
 
@@ -48,7 +47,6 @@ OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
 
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
-
 from hadml import utils
 
 log = utils.get_pylogger(__name__)
@@ -139,6 +137,7 @@ def main(cfg: DictConfig) -> Optional[float]:
     # return optimized metric
     return metric_value
 
+
 @hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
 def sweep(cfg: DictConfig) -> Optional[float]:
     """Hyperparameter sweep example."""
@@ -149,36 +148,22 @@ def sweep(cfg: DictConfig) -> Optional[float]:
             "method": "bayes",
             "metric": {"goal": "minimize", "name": "val/swd"},
             "parameters": {
-                "r1_reg": {"max": 5000,
-                           "min": 1,
-                           'distribution': 'log_uniform_values'},
-                "lr": {"max": 0.005,
-                       "min": 0.00001,
-                       'distribution': 'log_uniform_values'},
-                "width":  {"values": [50, 100, 250, 500]},
-                "depth": {"max": 8, "min": 4},
-                "batch_size": {"values": [5000, 10000, 20000, 40000, 80000]},
-                "batch_norm_gen": {"values": [1, 2, 3]},
-                # "batch_norm_dis": {"values": [0, 1, 2]},
-                "noise_dim": {"values": [1, 16, 64]},
-                "num_critics": {"values": [1, 2, 3]},
-                "num_gen": {"values": [1, 2]},
-            },
+                "r1_reg": {"max": 5000, "min": 1, "distribution": "log_uniform_values"},
+                "lr": {"max": 0.005, "min": 0.00001, "distribution": "log_uniform_values"},
+                "batch_size": {"values": [32, 48, 64]},
+                "noise_dim": {"values": [4, 8, 16]},
+                "loss_type": {"values": ["bce", "wasserstein", "ls"]},
+                "target_gumbel_temp": {"max": 0.5, "min": 0.1, "distribution": "log_uniform_values"}
+            }
         }
-
-        sweep_id = wandb.sweep(sweep=sweep_configuration,
-                               entity=cfg.logger.wandb.entity,
-                              project=cfg.logger.wandb.project)
-        print(f"Sweep id: {sweep_id}")
+        sweep_id = wandb.sweep(sweep=sweep_configuration, entity=cfg.logger.wandb.entity,
+                               project=cfg.logger.wandb.project)
+        print(f"Sweep ID: {sweep_id}")
     else:
-        wandb.agent(cfg.sweep_id,
-                    function=lambda: train_wandb(cfg),
-                    count=2,
-                    entity=cfg.logger.wandb.entity,
-                    project=cfg.logger.wandb.project
-                    )
-
+        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=10,
+                    entity=cfg.logger.wandb.entity, project=cfg.logger.wandb.project)
     return None
+
 
 def train_wandb(cfg: DictConfig) -> None:
     """Hyperparameter sweep example."""
@@ -187,14 +172,11 @@ def train_wandb(cfg: DictConfig) -> None:
     cfg.model.r1_reg = wandb.config.r1_reg
     cfg.model.optimizer_generator.lr = wandb.config.lr
     cfg.model.optimizer_discriminator.lr = wandb.config.lr
-    cfg.model.generator.hidden_dims = wandb.config.depth * [wandb.config.width]
-    cfg.model.discriminator.hidden_dims = wandb.config.depth * [wandb.config.width]
-    cfg.model.num_critics = wandb.config.num_critics
-    cfg.model.num_gen = wandb.config.num_gen
-    cfg.datamodule.batch_size = wandb.config.batch_size
     cfg.model.noise_dim = wandb.config.noise_dim
-    cfg.model.generator.batch_norm = wandb.config.batch_norm_gen
-    # cfg.model.discriminator.batch_norm = wandb.config.batch_norm_dis
+    cfg.model.loss_type = wandb.config.loss_type
+    cfg.model.target_gumbel_temp = wandb.config.target_gumbel_temp
+    cfg.datamodule.batch_size = wandb.config.batch_size
+    
     train(cfg, logger=logger)
 
 

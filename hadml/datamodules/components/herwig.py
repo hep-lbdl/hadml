@@ -691,6 +691,11 @@ class HerwigMultiHadronEventDataset(Dataset):
         # [[cluster_kin][cluster_kin]...[padding_token]] 
         # max_n_hadrons = max number of hadrons produced by the heaviest cluster
         gen_input = torch.stack([self.clusters[index] for _ in range(self.max_n_hadrons)])
+        
+        # Quark PIDs: (+/-) 1-8 -> transformation -> 0-16
+        quark_types = gen_input[:, 4:6]
+        quark_types = torch.where(quark_types < 0, torch.abs(quark_types), quark_types + 8)
+        gen_input[:, 4:6] = quark_types
 
         # Preparing the output sentence. The hadron type is a one-hot vector.
         # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]

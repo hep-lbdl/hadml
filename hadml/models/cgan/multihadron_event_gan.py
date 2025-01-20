@@ -8,6 +8,7 @@ from metrics.image_converter import fig_to_array
 from collections import Counter
 import numpy as np, matplotlib.pyplot as plt
 from torch.nn.attention import SDPBackend, sdpa_kernel
+import ot
 
 
 class MultiHadronEventGANModule(LightningModule):
@@ -32,6 +33,7 @@ class MultiHadronEventGANModule(LightningModule):
         self.val_gen_loss = MeanMetric()
         self.val_disc_loss = MeanMetric()
         self.current_gumbel_temp = 1.0
+        self.val_swd = MeanMetric()
 
     def forward(self, clusters):
         noise = self._generate_noise(*clusters.size()[:2])
@@ -47,6 +49,7 @@ class MultiHadronEventGANModule(LightningModule):
     def training_step(self, batch, batch_idx, optimizer_idx):
         # Updating the Gumbel Softmax temperature
         self._update_gumbel_temp()
+        
         gen_input, real_hadrons = batch
         fake_hadrons = self(gen_input)
         score_for_fake = self.discriminator(fake_hadrons)
@@ -97,13 +100,20 @@ class MultiHadronEventGANModule(LightningModule):
         return loss_disc
     
     def validation_step(self, batch, batch_idx):
-        gen_input, disc_input = batch
+        gen_input, real_hadrons = batch
         if self.trainer.state.stage == "validate":
-            noise = self._generate_noise(*gen_input.size()[:2])
-            gen_output = self.generator(noise.to(gen_input.device), gen_input).detach()
-            return {"gen_output": gen_output, "disc_input": disc_input.detach()}
+            fake_hadrons = self(gen_input)
+            swd_shape = fake_hadrons.shape
+            swd = ot.sliced_wasserstein_distance(
+                fake_hadrons.cpu().detach().numpy().reshape(swd_shape[0] * swd_shape[1], swd_shape[2]), 
+                real_hadrons.cpu().detach().numpy().reshape(swd_shape[0] * swd_shape[1], swd_shape[2]),
+                n_projections=2*swd_shape[2])
+            self.val_swd(swd)
+            return {"gen_output": fake_hadrons.cpu().detach(), 
+                    "disc_input": real_hadrons.cpu().detach(),
+                    "swd": swd}
         elif self.trainer.state.stage == "sanity_check":
-            return {"gen_input": gen_input[:, 0, :].detach()}
+            return {"gen_input": gen_input[:, 0, :].cpu().detach()}
 
     def test_step(self, batch, batch_idx):
         pass
@@ -119,10 +129,7 @@ class MultiHadronEventGANModule(LightningModule):
     def _update_gumbel_temp(self):
         progress = self.trainer.global_step / (0.8 * self.trainer.max_epochs * \
             len(self.hparams.datamodule.train_dataloader()))
-        if progress < 1.0:
-            progress = 1 - (1 - progress)**2
-        else:
-            progress = 1.0
+        progress = 1 - (1 - progress)**2
         self.current_gumbel_temp = 1.0 - (1 - self.hparams.target_gumbel_temp) * progress
         self.log("gumbel", self.current_gumbel_temp)
 
@@ -163,7 +170,12 @@ class MultiHadronEventGANModule(LightningModule):
             # Preparing diagrams
             images = self._prepare_plots(predictions=preds.cpu(), truths=truths.cpu(),
                                          sentence_stats=sentence_stats)
-        
+            
+            # Computing the Wasserstein distance and sending it to the logger
+            swd_distance = self.val_swd.compute()
+            self.log("val/swd", swd_distance)
+            self.val_swd.reset()
+
         elif self.trainer.state.stage == "sanity_check":
             gen_input = [d["gen_input"] for d in validation_step_outputs]
             gen_input = [d for gen_in in gen_input for d in gen_in] # [total_n_clusters, features]
