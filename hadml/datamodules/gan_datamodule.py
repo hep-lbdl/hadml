@@ -266,6 +266,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             batch_size=32,
             num_workers=8,
             initialise_data_preparation=False,
+            n_hadron_types=None,
             debug=True
         ):
         super().__init__()
@@ -293,6 +294,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             raw_file_list=raw_file_list,
             processed_filename=processed_filename,
             pid_map_file=pid_map_file,
+            n_hadron_types=n_hadron_types,
             debug=debug
         )
         parser.parse_data()

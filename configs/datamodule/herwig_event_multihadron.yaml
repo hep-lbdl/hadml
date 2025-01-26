@@ -9,6 +9,9 @@ num_workers: 128  # You need to write the number of CPUs of your machine
                   #   1 x AMD EPYC™ 7763 (CPU) = 64 cores x 2 threads = 128
 train_val_test_split: [0.7, 0.15, 0.15]
 
+# Number of hadron types to be taken into account (e.g. 10 most common PIDs)
+n_hadron_types: 10
+
 # Data directory
 data_dir: "data/Herwig"
 
@@ -26,9 +29,9 @@ processed_filename: "multihadron_events_1K.npy"
 # dist_plots_filename: "dist_plots_multihadron_events_1M.pdf"
 dist_plots_filename: "dist_plots_multihadron_events_1K.pdf"
 
-# pid_map_file: "pid_to/_idx_pions_only_events_272K.pkl"
+# pid_map_file: "pid_to_idx_pions_only_events_272K.pkl"
 # pid_map_file: "pid_to_idx_multihadron_events_1M.pkl"
 pid_map_file: "pid_to_idx_multihadron_events_1K.pkl"
 
 # Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
-initialise_data_preparation: False
+initialise_data_preparation: True
