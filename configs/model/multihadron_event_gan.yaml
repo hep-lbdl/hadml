@@ -17,9 +17,9 @@ discriminator:
 optimizer_generator:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0000175
+  lr: 0.0000175
 
 optimizer_discriminator:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0000175
+  lr: 0.0000175

@@ -206,7 +206,7 @@ class MultiHadronEventGANModule(LightningModule):
             truths_kin, truths_types = truths[:, :4], torch.argmax(truths[:, 4:], dim=1) - 1
 
             # Hadron type histogram
-            sample_range = [1, preds_types.max()]
+            sample_range = [0, truths_types.max()]
             bins = np.linspace(
                 start=sample_range[0] - 0.5, 
                 stop=sample_range[1] + 0.5, 
