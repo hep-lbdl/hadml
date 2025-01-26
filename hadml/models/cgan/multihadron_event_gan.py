@@ -22,7 +22,8 @@ class MultiHadronEventGANModule(LightningModule):
         noise_dim: int,
         loss_type: str,
         r1_reg: float,
-        target_gumbel_temp: float = 0.3
+        target_gumbel_temp: float = 0.3,
+        gumbel_softmax_hard: bool = False
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["generator", "discriminator"])
@@ -40,7 +41,8 @@ class MultiHadronEventGANModule(LightningModule):
         generated_hadrons = self.generator(noise.to(clusters.device), clusters)
         hadron_kins_dim = self.generator.hadron_kins_dim
         generated_hadrons[:, :, hadron_kins_dim:] = torch.nn.functional.gumbel_softmax(
-            generated_hadrons[:, :, hadron_kins_dim:], self.current_gumbel_temp)
+            generated_hadrons[:, :, hadron_kins_dim:], self.current_gumbel_temp, 
+            hard=self.hparams.gumbel_softmax_hard)
         return generated_hadrons
     
     def setup(self, stage=None):
