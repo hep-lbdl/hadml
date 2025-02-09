@@ -258,9 +258,9 @@ def get_r1_grad_penalty(
     gradients = torch.autograd.grad(
         outputs=score.sum(), inputs=real_inputs, create_graph=True, retain_graph=True
     )
-    gradients = torch.cat(gradients, dim=1)
+    gradients = torch.cat(gradients, dim=-1)
 
-    gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
+    gradient_penalty = gradients.pow(2).sum(-1).mean()
     return gradient_penalty
 
 
