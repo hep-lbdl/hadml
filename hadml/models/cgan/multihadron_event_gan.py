@@ -8,7 +8,7 @@ from metrics.image_converter import fig_to_array
 from collections import Counter
 import numpy as np, matplotlib.pyplot as plt
 from torch.nn.attention import SDPBackend, sdpa_kernel
-import ot
+import ot, os, pickle
 
 
 class MultiHadronEventGANModule(LightningModule):
@@ -23,7 +23,7 @@ class MultiHadronEventGANModule(LightningModule):
         loss_type: str,
         r1_reg: float,
         target_gumbel_temp: float = 0.3,
-        gumbel_softmax_hard: bool = False
+        gumbel_softmax_hard: bool = False,
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["generator", "discriminator"])
@@ -34,7 +34,10 @@ class MultiHadronEventGANModule(LightningModule):
         self.val_gen_loss = MeanMetric()
         self.val_disc_loss = MeanMetric()
         self.current_gumbel_temp = 1.0
-        self.val_swd = MeanMetric()
+        self.val_swd_1 = MeanMetric()
+        self.val_swd_2 = MeanMetric()
+        self.val_swd_3 = MeanMetric()
+        self.hadron_kins_dim = self.generator.hadron_kins_dim
 
     def forward(self, clusters):
         noise = self._generate_noise(*clusters.size()[:2])
@@ -103,19 +106,59 @@ class MultiHadronEventGANModule(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         gen_input, real_hadrons = batch
+
         if self.trainer.state.stage == "validate":
             fake_hadrons = self(gen_input)
+            
+            # Possible post-processing step: zeroing kinematics of hadrons marked as padding tokens
+            # condition = fake_hadrons[:, :, self.hadron_kins_dim] == 1.0
+            # pure_padding_tokens = torch.zeros_like(fake_hadrons[condition])
+            # pure_padding_tokens[:, self.hadron_kins_dim] = 1.0
+            # fake_hadrons[condition] = pure_padding_tokens
+
             swd_shape = fake_hadrons.shape
-            swd = ot.sliced_wasserstein_distance(
+            
+            # Wasserstein (reshaping: [batch_size * seq_len, features])
+            swd_1 = ot.sliced_wasserstein_distance(
                 fake_hadrons.cpu().detach().numpy().reshape(swd_shape[0] * swd_shape[1], swd_shape[2]), 
                 real_hadrons.cpu().detach().numpy().reshape(swd_shape[0] * swd_shape[1], swd_shape[2]),
-                n_projections=2*swd_shape[2])
-            self.val_swd(swd)
+                n_projections=10*swd_shape[2])
+            self.val_swd_1(swd_1)
+
+            # Wasserstein (reshaping: [batch_size, seq_len * features])
+            swd_2 = ot.sliced_wasserstein_distance(
+            fake_hadrons.cpu().detach().numpy().reshape(swd_shape[0], swd_shape[1] * swd_shape[2]), 
+            real_hadrons.cpu().detach().numpy().reshape(swd_shape[0], swd_shape[1] * swd_shape[2]),
+            n_projections=10*swd_shape[2])
+            self.val_swd_2(swd_2)
+            
+            # Wassestein (comparing the number of non-padding tokens in the whole batch)
+            counter_for_fake_hadrons = np.zeros((1, swd_shape[1] + 1))
+            num_non_padding_tokens = [len(sequence[sequence[:, self.hadron_kins_dim] == 0.0]) 
+                                      for sequence in fake_hadrons]
+            for n in num_non_padding_tokens:
+                counter_for_fake_hadrons[0, n] += 1
+
+            counter_for_real_hadrons = np.zeros((1, swd_shape[1] + 1))
+            num_non_padding_tokens = [len(sequence[sequence[:, self.hadron_kins_dim] == 0.0]) 
+                                      for sequence in real_hadrons]
+            for n in num_non_padding_tokens:
+                counter_for_real_hadrons[0, n] += 1
+            swd_3 = ot.sliced_wasserstein_distance(
+                counter_for_fake_hadrons,
+                counter_for_real_hadrons,
+                n_projections=10*(swd_shape[1]+1)
+            )
+
+            self.val_swd_3(swd_3)            
+
             return {"gen_output": fake_hadrons.cpu().detach(), 
                     "disc_input": real_hadrons.cpu().detach(),
-                    "swd": swd}
+                    "swd_1": swd_1, "swd_2": swd_2, "swd_3": swd_3}
+        
         elif self.trainer.state.stage == "sanity_check":
-            return {"gen_input": gen_input[:, 0, :].cpu().detach()}
+            return {"gen_input": gen_input[:, 0, :].cpu().detach(),
+                    "disc_input": real_hadrons.cpu().detach()}
 
     def test_step(self, batch, batch_idx):
         pass
@@ -144,6 +187,10 @@ class MultiHadronEventGANModule(LightningModule):
                        images=list(images.values()), caption=list(images.keys()))
 
     def validation_epoch_end(self, validation_step_outputs):
+        truths = [d["disc_input"] for d in validation_step_outputs]
+        # [n_hadron_sets, max_n_hadrons, features]
+        truths = [d for truth in truths for d in truth]
+        
         if self.trainer.state.stage == "validate":
             # Handling the validation output list
             # Shape of validation_step_outputs: [n_batches, dict_key, batch_size, max_n_hadrons, features]
@@ -152,17 +199,16 @@ class MultiHadronEventGANModule(LightningModule):
             preds = [d["gen_output"] for d in validation_step_outputs]
             # [n_hadron_sets, max_n_hadrons, features]
             preds = [d for pred in preds for d in pred]      
-            sentence_stats["pred_n_hads_per_cluster"] = [len(d[d[:, 4] == 0.0]) for d in preds]
+            sentence_stats["pred_n_hads_per_cluster"] = \
+                [len(d[d[:, self.hadron_kins_dim] == 0.0]) for d in preds]
             sentence_stats["pred_n_pad_hads_per_cluster"] = [len(preds[0]) - n for n in 
                                                              sentence_stats["pred_n_hads_per_cluster"]]
             # [total_n_hadrons, features]
             preds = [d for pred in preds for d in pred]      
             preds = torch.stack(preds)         
-            
-            truths = [d["disc_input"] for d in validation_step_outputs]
-            # [n_hadron_sets, max_n_hadrons, features]
-            truths = [d for truth in truths for d in truth]  
-            sentence_stats["true_n_hads_per_cluster"] = [len(d[d[:, 4] == 0.0]) for d in truths]
+              
+            sentence_stats["true_n_hads_per_cluster"] = \
+                [len(d[d[:, self.hadron_kins_dim] == 0.0]) for d in truths]
             sentence_stats["true_n_pad_hads_per_cluster"] = [len(truths[0]) - n for n in 
                                                              sentence_stats["true_n_hads_per_cluster"]]
             # [total_n_hadrons, features]
@@ -174,17 +220,29 @@ class MultiHadronEventGANModule(LightningModule):
                                          sentence_stats=sentence_stats)
             
             # Computing the Wasserstein distance and sending it to the logger
-            swd_distance = self.val_swd.compute()
-            self.log("val/swd", swd_distance)
-            self.val_swd.reset()
+            swd_distance_1 = self.val_swd_1.compute()
+            self.log("val/swd_1", swd_distance_1)
+            self.val_swd_1.reset()
+
+            swd_distance_2 = self.val_swd_2.compute()
+            self.log("val/swd_2", swd_distance_2)
+            self.val_swd_2.reset()
+
+            swd_distance_3 = self.val_swd_3.compute()
+            self.log("val/swd_3", swd_distance_3)
+            self.val_swd_3.reset()
 
         elif self.trainer.state.stage == "sanity_check":
             gen_input = [d["gen_input"] for d in validation_step_outputs]
             gen_input = [d for gen_in in gen_input for d in gen_in] # [total_n_clusters, features]
             gen_input = torch.stack(gen_input)
 
+            # [total_n_hadrons, features]
+            truths = [d for truth in truths for d in truth]  
+            truths = torch.stack(truths)
+
             # Preparing diagrams
-            images = self._prepare_plots(clusters=gen_input.cpu())
+            images = self._prepare_plots(clusters=gen_input.cpu(), truths=truths.cpu())
 
         # Sending the diagrams to the logger
         if self.logger and self.logger.experiment is not None:
@@ -202,8 +260,10 @@ class MultiHadronEventGANModule(LightningModule):
         diagrams = {}
 
         if predictions is not None and truths is not None:
-            preds_kin, preds_types = predictions[:, :4], torch.argmax(predictions[:, 4:], dim=1) - 1
-            truths_kin, truths_types = truths[:, :4], torch.argmax(truths[:, 4:], dim=1) - 1
+            preds_kin, preds_types = predictions[:, :self.hadron_kins_dim], \
+                torch.argmax(predictions[:, self.hadron_kins_dim:], dim=1) - 1
+            truths_kin, truths_types = truths[:, :self.hadron_kins_dim], \
+                torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
 
             # Hadron type histogram
             sample_range = [0, truths_types.max()]
@@ -216,13 +276,13 @@ class MultiHadronEventGANModule(LightningModule):
             density = n_types // 25 if n_types // 25 > 0 else 1
             fig = plt.figure(figsize=(9, 6))
             plt.title("Hadron Type Distribution")
-            plt.hist(truths_types, bins=bins, color="black", histtype="step", label="True")
-            plt.hist(preds_types, bins=bins, color="#AABA9E", label="Generated")
+            plt.hist(truths_types, bins=bins, color="red", histtype="step", label="True", rwidth=0.9)
+            plt.hist(preds_types, bins=bins, color="black", label="Generated", rwidth=0.8)
             plt.ylabel("Hadrons")
             plt.xlabel("Hadron Most Common ID\n(mapped from PIDs)", labelpad=20)
             xticks = np.arange(start=sample_range[0] - 1, stop=sample_range[1] + 1, step=density)[1:]
             plt.xticks(xticks, rotation=90)
-            plt.legend()
+            plt.legend(loc="upper right")
             plt.tight_layout()
             diagrams["hadron_type_hist"] = fig_to_array(fig, tight_layout=False)
 
@@ -231,10 +291,10 @@ class MultiHadronEventGANModule(LightningModule):
             fig.subplots_adjust(wspace=0.2, hspace=0.35)        
             axs[0][0].set_title("Hadron Energy Distribution")
             labels = ["Generated", "True"]
-            (_, bins, _) = axs[0][0].hist(truths_kin[:, 0], bins="scott", color="black", 
+            (_, bins, _) = axs[0][0].hist(truths_kin[:, 0], bins="scott", color="red", 
                                         label=labels[1], histtype="step")
-            axs[0][0].hist(preds_kin[:, 0], bins=bins, color="#AEC5EB", label=labels[0])
-            axs[0][0].set_xlabel("Energy (Cluster Rest Frame)")
+            axs[0][0].hist(preds_kin[:, 0], bins=bins, color="black", label=labels[0])
+            axs[0][0].set_xlabel("Energy")
             axis = ['x', 'y', 'z']
             for row in range(0, 2):
                 for col in range(0, 2):
@@ -243,16 +303,16 @@ class MultiHadronEventGANModule(LightningModule):
                     feature = row + col + 1
                     axs[row][col].set_xlabel(f"Momentum ({axis[feature - 1].capitalize()})")
                     axs[row][col].title.set_text("Hadron Momentum Distribution")
-                    (_, bins, _) = axs[row][col].hist(truths_kin[:, feature], bins="auto", 
-                                                    color="black", label=labels[1], histtype="step")
-                    axs[row][col].hist(preds_kin[:, feature], bins=bins, color="#F9DEC9", 
+                    (_, bins, _) = axs[row][col].hist(truths_kin[:, feature], bins="auto", rwidth=0.9,
+                                                    color="red", label=labels[1], histtype="step")
+                    axs[row][col].hist(preds_kin[:, feature], bins=bins, color="black", rwidth=0.8,
                                     label=labels[0])
             for row in range(0, 2):
                 for col in range(0, 2):
                     axs[row][col].set_ylabel("Hadrons (Log Scale)")
                     axs[row][col].set_yscale("log")
                     axs[row][col].legend(loc='upper right')
-            fig.suptitle("Hadron Kinematics Distribution")
+            fig.suptitle("Hadron Kinematics Distribution\n(Cluster Rest Frame)")
             diagrams["hadron_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
 
             # Hadron and padding token multiplicity
@@ -262,37 +322,40 @@ class MultiHadronEventGANModule(LightningModule):
             bins = np.linspace(start=-0.5, stop=n_max_hads+0.5, num=n_max_hads+2, retstep=0.5)[0]
             datatype = ["true", "pred"]
             labels = ["True", "Generated"]
-            colours = ["black", "#DE3C4B"]
+            colours = ["red", "black"]
+            rwidth = [0.9, 0.8]
             for col in range(0, 2):
                 for i in range(0, 2):
                     if col == 0:
                         axs[col].hist(sentence_stats[f"{datatype[i]}_n_hads_per_cluster"], 
-                                            bins=bins, color=colours[i], label=labels[i], rwidth=0.9)
+                                            bins=bins, color=colours[i], label=labels[i], rwidth=rwidth[i])
                         axs[col].set_xlabel("Number of hadrons")
                     else:
                         axs[col].hist(sentence_stats[f"{datatype[i]}_n_pad_hads_per_cluster"], 
-                                            bins=bins, color=colours[i], label=labels[i], rwidth=0.9)
+                                            bins=bins, color=colours[i], label=labels[i], rwidth=rwidth[i])
                         axs[col].set_xlabel("Number of padding tokens")
-                axs[col].legend()
+                axs[col].legend(loc="upper right")
                 axs[col].set_ylabel("Sentences")
             fig.suptitle("Sentence Statistics")
             plt.tight_layout()
             diagrams["sentence_statistics_hist"] = fig_to_array(fig, tight_layout=False)
         
-        elif clusters is not None:
+        elif clusters is not None and truths is not None:
             diagrams = {}
             kinematics = clusters[:, :4]
             quark_types = clusters[:, 4:6]
             quark_angles = clusters[:, 6:]
+            hadron_types = truths[:, self.hadron_kins_dim:]
 
             # Cluster kinematics histograms
-            fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+            fig, axs = plt.subplots(1, 3, figsize=(15, 6))
             axis = ['x', 'y', 'z']
             for col in range(0, 3):
-                axs[col].hist(kinematics[:, col], bins="auto", color="#AB92BF")
+                axs[col].hist(kinematics[:, col], bins="auto", color="black", rwidth=0.9)
                 axs[col].set_xlabel(f"Momentum ({axis[col].capitalize()})")
                 axs[col].set_ylabel("Clusters")
-            fig.suptitle("Cluster Momentum Distribution")
+            fig.suptitle("Cluster Momentum Distribution" + \
+                         f"\n(validation data, {len(kinematics[:, col])} clusters)")
             plt.tight_layout()
             diagrams["cluster_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
 
@@ -308,20 +371,44 @@ class MultiHadronEventGANModule(LightningModule):
                 for col in range(0, 2):
                     if row == 0:
                         quark_idx = [pids_to_idx[t.item()] for t in quark_types[:, col]]
-                        axs[row][col].hist(quark_idx, bins=bins, rwidth=0.8, color="#4C1E4F")
-                        axs[row][col].set_xlabel("PID")
+                        axs[row][col].hist(quark_idx, bins=bins, rwidth=0.8, color="black")
+                        axs[row][col].set_xlabel("Particle ID (PID)")
                         axs[row][col].title.set_text("Type") 
-                        axs[row][col].set_xticks([int(pid) for pid in pids_to_idx.values()])
+                        axs[row][col].set_xticks([int(id) for id in pids_to_idx.values()])
                         axs[row][col].set_xticklabels([int(pid) for pid in pids_to_idx.keys()], 
                                                       rotation=90)
                     else:
-                        axs[row][col].hist(quark_angles[:, col], bins="scott", rwidth=0.8, 
-                                           color="#B5A886")
+                        axs[row][col].hist(quark_angles[:, col], bins="scott", rwidth=0.8, color="black")
                         axs[row][col].set_xlabel("Angle") 
                         axs[row][col].title.set_text(f"Kinematics ({angles[col]})") 
                     axs[row][col].set_ylabel("Quarks")
-            fig.suptitle("Quark Type and Momentum Distribution")
+            fig.suptitle("Quark Type and Momentum Distribution" + \
+                         f"\n(validation data, {len(quark_idx)} quark pairs)")
             plt.tight_layout()
             diagrams["quarks_features_hist"] = fig_to_array(fig, tight_layout=False)    
             
+            # Hadron type histogram
+            hadron_types = torch.argmax(hadron_types, dim=1)
+            hadron_types = hadron_types[hadron_types != 0] - 1
+            with open(os.path.join(os.path.normpath(self.hparams.datamodule.data_dir),
+                                   "processed", self.hparams.datamodule.pid_map_file), "rb") as f:
+                pids_to_idx = pickle.load(f)
+            fig = plt.figure(figsize=(11.2, 6.3))
+            n_idx = len(pids_to_idx)
+            bins = np.linspace(start=-0.5, stop=n_idx+0.5, num=n_idx+2, retstep=0.5)[0]
+            plt.hist(hadron_types, bins=bins, color="black", rwidth=0.8)
+            x_ticks = [int(id) for id in pids_to_idx.values()]
+            x_labels = [pid for pid in pids_to_idx.keys()]
+            if "uncommon_pid" in pids_to_idx:
+                plt.xticks(ticks=x_ticks, labels=x_labels, rotation=90)
+            else:
+                plt.xticks(ticks=[x for x in x_ticks[::5]], 
+                           labels=[x for x in x_labels[::5]], rotation=90)
+            plt.title(f"Hadron Type Distribution\n(validation data, {len(hadron_types)} hadrons, " + \
+                      f"{len(pids_to_idx)} types)")
+            plt.xlabel("Particle ID (PID)")
+            plt.ylabel("Hadrons")
+            plt.tight_layout()
+            diagrams["hadron_initial_type_hist"] = fig_to_array(fig, tight_layout=False)    
+
         return diagrams

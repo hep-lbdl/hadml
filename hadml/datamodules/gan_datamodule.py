@@ -288,12 +288,13 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
+        self.pid_map_file = pid_map_file
 
         parser = HerwigMultiHadronEventParser(
             data_dir=data_dir,
             raw_file_list=raw_file_list,
             processed_filename=processed_filename,
-            pid_map_file=pid_map_file,
+            pid_map_file=self.pid_map_file,
             n_hadron_types=n_hadron_types,
             debug=debug
         )
@@ -430,7 +431,6 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         """ Draw distribution diagrams for a list of three data sets """
         plt.clf()
         _, ax = plt.subplots(2, 2, figsize=(13, 8))
-        colors = [["black", "black"], ["orange", "orange"]]
 
         for r in range(len(data)):
             for c in range(len(data)):
@@ -447,8 +447,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                     bins = "scott"
 
                 # Preparing a chart
-                ax[r][c].hist(samples, bins=bins, color=colors[r][c], alpha=0.7,
-                        label=legend_labels[r][c])
+                ax[r][c].hist(samples, bins=bins, color="black", rwidth=0.9, label=legend_labels[r][c])
                 ax[r][c].set_xlabel(xlabels[r][c])
                 if ylabels[r][c] is not None:
                     ax[r][c].set_ylabel(ylabels[r][c])
