@@ -57,6 +57,13 @@ class MultiHadronEventGANModule(LightningModule):
         
         gen_input, real_hadrons = batch
         fake_hadrons = self(gen_input)
+        
+        # Zeroing kinematics of generated hadrons marked as padding tokens
+        condition = fake_hadrons[:, :, self.hadron_kins_dim] == 1.0
+        pure_padding_tokens = torch.zeros_like(fake_hadrons[condition])
+        pure_padding_tokens[:, self.hadron_kins_dim] = 1.0
+        fake_hadrons[condition] = pure_padding_tokens
+        
         score_for_fake = self.discriminator(fake_hadrons)
         if optimizer_idx == 0:
             # Training the generator
@@ -111,10 +118,10 @@ class MultiHadronEventGANModule(LightningModule):
             fake_hadrons = self(gen_input)
             
             # Possible post-processing step: zeroing kinematics of hadrons marked as padding tokens
-            # condition = fake_hadrons[:, :, self.hadron_kins_dim] == 1.0
-            # pure_padding_tokens = torch.zeros_like(fake_hadrons[condition])
-            # pure_padding_tokens[:, self.hadron_kins_dim] = 1.0
-            # fake_hadrons[condition] = pure_padding_tokens
+            condition = fake_hadrons[:, :, self.hadron_kins_dim] == 1.0
+            pure_padding_tokens = torch.zeros_like(fake_hadrons[condition])
+            pure_padding_tokens[:, self.hadron_kins_dim] = 1.0
+            fake_hadrons[condition] = pure_padding_tokens
 
             swd_shape = fake_hadrons.shape
             
