@@ -1,8 +1,8 @@
 _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
 noise_dim: 4
-loss_type: "ls"
+loss_type: "bce"
 r1_reg: 3000
-target_gumbel_temp: 0.31
+target_gumbel_temp: 0.30
 gumbel_softmax_hard: True
 
 generator: 
@@ -17,9 +17,9 @@ discriminator:
 optimizer_generator:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.0000175
+  lr: 0.001
 
 optimizer_discriminator:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.0000175
+  lr: 0.001
