@@ -665,9 +665,12 @@ class HerwigMultiHadronEventDataset(Dataset):
     different types transformed to indices) and provide the DataLoader class object with prepared 
     generator and discriminator sentences. """
 
-    def __init__(self, n_had_types, clusters, hadrons_with_types, max_n_hadrons):
+    def __init__(self, n_had_types, clusters, hadrons_with_types, max_n_hadrons,
+                 training_stats_filename):
         super().__init__()
 
+        self.training_stats_filename = training_stats_filename
+        self.hadron_stats, self.cluster_stats = None, None
         self.n_had_types = n_had_types
         self.hadrons_with_types = hadrons_with_types
         self.clusters = clusters
@@ -678,19 +681,34 @@ class HerwigMultiHadronEventDataset(Dataset):
             1, hadrons_with_types[0].get_kinematics_dims() + n_had_types)
         self.hadron_padding_token[0, hadrons_with_types[0].get_kinematics_dims()] = 1.0
 
-
     def __len__(self):
         return self.n_clusters
-
 
     def __getitem__(self, index):
         """ This method is mainly responsible for tokenisation and building sentences containing 
         "cluster/hadron padding tokens". It returns a pair of prepared sentences. """
+        
+        cluster = self.clusters[index]
+        hadrons = self.hadrons_with_types[index].kinematics
+        
+        # Standardising cluster kinematics
+        if self.cluster_stats is not None:
+            cluster[0] = cluster[0] - self.cluster_stats["energy_mean"]
+            cluster[0] = cluster[0] / self.cluster_stats["energy_std"]
+            cluster[1:4] = cluster[1:4] - self.cluster_stats["momentum_mean"]
+            cluster[1:4] = cluster[1:4] / self.cluster_stats["momentum_std"]
+
+        # Standardising hadron kinematics
+        if self.cluster_stats is not None:
+            hadrons[:, 0] = hadrons[:, 0] - self.hadron_stats["energy_mean"]
+            hadrons[:, 0] = hadrons[:, 0] / self.hadron_stats["energy_std"]
+            hadrons[:, 1:4] = hadrons[:, 1:4] - self.hadron_stats["momentum_mean"]
+            hadrons[:, 1:4] = hadrons[:, 1:4] / self.hadron_stats["momentum_std"]
 
         # Preparing the input sentence. Tokens then need to be concatenated with noise.
         # [[cluster_kin][cluster_kin]...[padding_token]] 
         # max_n_hadrons = max number of hadrons produced by the heaviest cluster
-        gen_input = torch.stack([self.clusters[index] for _ in range(self.max_n_hadrons)])
+        gen_input = torch.stack([cluster for _ in range(self.max_n_hadrons)])
         
         # Quark PIDs: (+/-) 1-8 -> transformation -> 0-16
         quark_types = gen_input[:, 4:6]
@@ -700,7 +718,6 @@ class HerwigMultiHadronEventDataset(Dataset):
         # Preparing the output sentence. The hadron type is a one-hot vector.
         # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
         # max_n_hadrons = max number of hadrons produced by the heaviest cluster
-        hadrons = self.hadrons_with_types[index].kinematics
         hadron_types = torch.nn.functional.one_hot(
             self.hadrons_with_types[index].types, self.n_had_types)
         disc_input = torch.cat([hadrons, hadron_types], dim=1)
@@ -709,5 +726,21 @@ class HerwigMultiHadronEventDataset(Dataset):
             hadron_padding_tokens = torch.cat([self.hadron_padding_token 
                                             for _ in range(self.max_n_hadrons - n_hadrons)])
             disc_input = torch.cat([disc_input, hadron_padding_tokens])
-        
         return gen_input.to(torch.float32), disc_input.to(torch.float32)
+        
+    def get_kinematics(self, index):
+        # Returning kinematics only for computing values needed for standardisation
+        return {"hadron_kin": self.hadrons_with_types[index].kinematics,
+                "cluster_kin": self.clusters[index][:4]}
+    
+    def set_training_stats(self):
+        with open(self.training_stats_filename, "rb") as f:
+            stats = np.load(f, allow_pickle=True).item()
+        self.hadron_stats = {
+            "momentum_mean" : stats["hadron_momentum_mean"], "momentum_std" : stats["hadron_momentum_std"],
+            "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
+        }
+        self.cluster_stats = {
+            "momentum_mean" : stats["cluster_momentum_mean"], "momentum_std": stats["cluster_momentum_std"],
+            "energy_mean" : stats["cluster_energy_mean"], "energy_std" : stats["cluster_energy_std"]
+        }

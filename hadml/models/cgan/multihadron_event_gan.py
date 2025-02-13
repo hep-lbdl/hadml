@@ -2,7 +2,7 @@ import torch
 from torch.optim import Optimizer
 from torchmetrics import MeanMetric
 from pytorch_lightning import LightningModule
-from utils.utils import conditional_cat, get_r1_grad_penalty
+from utils.utils import get_r1_grad_penalty
 from metrics.media_logger import log_images
 from metrics.image_converter import fig_to_array
 from collections import Counter

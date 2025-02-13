@@ -260,6 +260,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             data_dir="data/Herwig",
             raw_file_list=["AllClusters_10K.dat"],
             processed_filename="herwig_multihadron_events_10K.npy",
+            training_stats_filename="herwig_multihadron_events_10K_train_stats.npy",
             dist_plots_filename="distribution_plots_10K.pdf",
             pid_map_file="pid_to_idx.pkl",
             train_val_test_split: Tuple[float, float, float] = (0.7, 0.15, 0.15),
@@ -276,6 +277,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         if not os.path.exists(processed_path):
             os.makedirs(processed_path)
         self.processed_filename = os.path.join(processed_path, processed_filename)
+        self.training_stats_filename = os.path.join(processed_path, training_stats_filename)
 
         dist_plots_path = os.path.join(os.path.normpath(self.data_dir), "plots")
         if not os.path.exists(dist_plots_path):
@@ -388,7 +390,8 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 self.n_had_types,
                 self.clusters,
                 self.hadrons_with_types,
-                self.max_n_hadrons)
+                self.max_n_hadrons,
+                self.training_stats_filename)
             
             # Creating the training, validation and test datasets
             self.data_train, self.data_val, self.data_test = random_split(
@@ -396,7 +399,36 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 lengths=self.train_val_test_split,
                 generator=torch.Generator().manual_seed(42),
             )
-
+            
+            # Computing values (using the training data) needed to standardise kinematics
+            if os.path.exists(self.training_stats_filename):
+                print("Found training data statistics:\n   ", self.training_stats_filename,
+                      '\n', '-'*70, sep='')
+            else: 
+                hadron_kinematics, cluster_kinematics = [], []
+                train_dataset_idx = self.data_train.indices
+                for index in train_dataset_idx:
+                    sample = dataset.get_kinematics(index)
+                    hadron_kinematics.append(sample["hadron_kin"]) 
+                    cluster_kinematics.append(sample["cluster_kin"]) 
+                hadron_kinematics = torch.cat(hadron_kinematics, dim=0)
+                cluster_kinematics = torch.stack(cluster_kinematics, dim=0)
+                training_kinematics_stats = {
+                    "hadron_momentum_mean" : hadron_kinematics[:, 1:4].mean().to(torch.float32),
+                    "hadron_momentum_std" : hadron_kinematics[:, 1:4].std().to(torch.float32),
+                    "hadron_energy_mean" : hadron_kinematics[:, 0].mean().to(torch.float32),
+                    "hadron_energy_std" : hadron_kinematics[:, 0].std().to(torch.float32),
+                    "cluster_momentum_mean" : cluster_kinematics[:, 1:4].mean().to(torch.float32),
+                    "cluster_momentum_std" : cluster_kinematics[:, 1:4].std().to(torch.float32),
+                    "cluster_energy_mean" : cluster_kinematics[:, 0].mean().to(torch.float32),
+                    "cluster_energy_std" : cluster_kinematics[:, 0].std().to(torch.float32),
+                }
+                with open(self.training_stats_filename, "wb") as f:
+                    np.save(f, training_kinematics_stats)
+                    print("Computed training data statistics saved in:\n   ", 
+                          self.training_stats_filename, '\n', '-'*70, sep='')    
+                print(training_kinematics_stats)
+            dataset.set_training_stats()
             print(f"Number of training examples: {len(self.data_train)}")
             print(f"Number of validation examples: {len(self.data_val)}")
             print(f"Number of test examples: {len(self.data_test)}")
