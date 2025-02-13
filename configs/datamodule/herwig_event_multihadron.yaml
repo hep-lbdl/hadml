@@ -1,7 +1,7 @@
 _target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
 # Basic parameters
-batch_size: 512
+batch_size: 1024
 num_workers: 128  # You need to write the number of CPUs of your machine
                   # Example 1: running on Intel Core i5 having 
                   #   1 socket x 4 physical cores x 2 threads = 8
