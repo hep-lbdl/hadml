@@ -254,10 +254,10 @@ class MultiHadronEventGANModule(LightningModule):
         diagrams = {}
 
         if predictions is not None and truths is not None:
-            preds_kin, preds_types = predictions[:, :self.hadron_kins_dim], \
-                torch.argmax(predictions[:, self.hadron_kins_dim:], dim=1) - 1
-            truths_kin, truths_types = truths[:, :self.hadron_kins_dim], \
-                torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
+            preds_kin = predictions[predictions[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
+            preds_types = torch.argmax(predictions[:, self.hadron_kins_dim:], dim=1) - 1
+            truths_kin = truths[truths[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
+            truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
 
             # Hadron type histogram
             sample_range = [0, truths_types.max()]
