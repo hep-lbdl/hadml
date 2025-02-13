@@ -37,6 +37,13 @@ class Generator(torch.nn.Module):
         embedded_input = self.input_embedding_layer(clusters_and_noise)
         embedded_output = self.transformer_encoder(embedded_input)
         hadrons = self.output_embedding_layer(embedded_output)
+        
+        # Zeroing kinematics of generated hadrons marked as padding tokens
+        condition = hadrons[:, :, self.hadron_kins_dim] == 1.0
+        pure_padding_tokens = torch.zeros_like(hadrons[condition])
+        pure_padding_tokens[:, self.hadron_kins_dim] = 1.0
+        hadrons[condition] = pure_padding_tokens
+        
         return hadrons
     
 

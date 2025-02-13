@@ -427,7 +427,6 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                     np.save(f, training_kinematics_stats)
                     print("Computed training data statistics saved in:\n   ", 
                           self.training_stats_filename, '\n', '-'*70, sep='')    
-                print(training_kinematics_stats)
             dataset.set_training_stats()
             print(f"Number of training examples: {len(self.data_train)}")
             print(f"Number of validation examples: {len(self.data_val)}")
@@ -439,6 +438,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             dataset=self.data_train, 
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers=True,
             shuffle=True,
             generator=torch.Generator().manual_seed(42)
         )
@@ -448,6 +448,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             dataset=self.data_val, 
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers=True,
             generator=torch.Generator().manual_seed(42)
         )
 
@@ -456,6 +457,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             dataset=self.data_test, 
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            persistent_workers=True,
             generator=torch.Generator().manual_seed(42)
         )
 
