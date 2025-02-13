@@ -260,7 +260,11 @@ def get_r1_grad_penalty(
     )
     gradients = torch.cat(gradients, dim=-1)
 
-    gradient_penalty = gradients.pow(2).sum(-1).mean()
+    if gradients.dim() >= 3:
+        gradient_penalty = (gradients.norm(2, dim=[-1, -2]) ** 2).mean() 
+    else:
+        gradient_penalty = gradients.pow(2).sum(-1).mean()
+
     return gradient_penalty
 
 
