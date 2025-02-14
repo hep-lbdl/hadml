@@ -38,6 +38,8 @@ class MultiHadronEventGANModule(LightningModule):
         self.val_swd_2 = MeanMetric()
         self.val_swd_3 = MeanMetric()
         self.hadron_kins_dim = self.generator.hadron_kins_dim
+        self.hadron_stats = None
+        self.training_stats_filename = datamodule.training_stats_filename
 
     def forward(self, clusters):
         noise = self._generate_noise(*clusters.size()[:2])
@@ -254,11 +256,38 @@ class MultiHadronEventGANModule(LightningModule):
         diagrams = {}
 
         if predictions is not None and truths is not None:
+            # Getting rid of the padding token kinematics
             preds_kin = predictions[predictions[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
             preds_types = torch.argmax(predictions[:, self.hadron_kins_dim:], dim=1) - 1
             truths_kin = truths[truths[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
             truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
 
+            # Clipping the range to ignore outliers lying beyond 3 sigmas
+            if self.hadron_stats is None:
+                with open(self.training_stats_filename, "rb") as f:
+                    stats = np.load(f, allow_pickle=True).item()
+                self.hadron_stats = {
+                    "momentum_mean" : stats["hadron_momentum_mean"], "momentum_std" : stats["hadron_momentum_std"],
+                    "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
+                }
+            mean, std = self.hadron_stats["energy_mean"], self.hadron_stats["energy_std"]
+            condition = (preds_kin[:, 0] >= (mean - 3*std)) * (preds_kin[:, 0] <= (mean + 3*std))
+            clipped_preds_energy = preds_kin[condition][:, 0]          
+            condition = (truths_kin[:, 0] >= (mean - 3*std)) * (truths_kin[:, 0] <= (mean + 3*std))
+            clipped_truth_energy = truths_kin[condition][:, 0]      
+            
+            mean, std = self.hadron_stats["momentum_mean"], self.hadron_stats["momentum_std"]
+            condition_1 = (preds_kin[:, 1] >= (mean - 3*std)) * (preds_kin[:, 1] <= (mean + 3*std))
+            condition_2 = (preds_kin[:, 2] >= (mean - 3*std)) * (preds_kin[:, 2] <= (mean + 3*std))
+            condition_3 = (preds_kin[:, 3] >= (mean - 3*std)) * (preds_kin[:, 3] <= (mean + 3*std))
+            clipped_preds_momenta = [preds_kin[condition_1][:, 1], preds_kin[condition_2][:, 2],
+                                     preds_kin[condition_3][:, 3]]          
+            condition_1 = (truths_kin[:, 1] >= (mean - 3*std)) * (truths_kin[:, 1] <= (mean + 3*std))
+            condition_2 = (truths_kin[:, 2] >= (mean - 3*std)) * (truths_kin[:, 2] <= (mean + 3*std))
+            condition_3 = (truths_kin[:, 3] >= (mean - 3*std)) * (truths_kin[:, 3] <= (mean + 3*std))
+            clipped_truths_momenta = [truths_kin[condition_1][:, 1], truths_kin[condition_2][:, 2],
+                                     truths_kin[condition_3][:, 3]]    
+            
             # Hadron type histogram
             sample_range = [0, truths_types.max()]
             bins = np.linspace(
@@ -285,28 +314,38 @@ class MultiHadronEventGANModule(LightningModule):
             fig.subplots_adjust(wspace=0.2, hspace=0.35)        
             axs[0][0].set_title("Hadron Energy Distribution")
             labels = ["Generated", "True"]
-            (_, bins, _) = axs[0][0].hist(truths_kin[:, 0], bins="scott", color="red", 
-                                        label=labels[1], histtype="step")
-            axs[0][0].hist(preds_kin[:, 0], bins=bins, color="black", label=labels[0])
+            (records, bins, _) = axs[0][0].hist(clipped_truth_energy, bins="auto", color="red", 
+                                        label=labels[1], alpha=0.7)
+            max_y_value = max(records)
+            min_x_value, max_x_value = min(bins), max(bins)
+            axs[0][0].set_ylim((0, max_y_value + max_y_value * 0.15))
+            axs[0][0].set_xlim((min_x_value, max_x_value))
+            axs[0][0].hist(clipped_preds_energy, bins=bins, color="black", label=labels[0], alpha=0.7)
             axs[0][0].set_xlabel("Energy")
             axis = ['x', 'y', 'z']
             for row in range(0, 2):
                 for col in range(0, 2):
                     if row == 0 and col == 0:
                         continue
-                    feature = row + col + 1
-                    axs[row][col].set_xlabel(f"Momentum ({axis[feature - 1].capitalize()})")
+                    feature = row + col
+                    axs[row][col].set_xlabel(f"Momentum ({axis[feature].capitalize()})")
                     axs[row][col].title.set_text("Hadron Momentum Distribution")
-                    (_, bins, _) = axs[row][col].hist(truths_kin[:, feature], bins="auto", rwidth=0.9,
-                                                    color="red", label=labels[1], histtype="step")
-                    axs[row][col].hist(preds_kin[:, feature], bins=bins, color="black", rwidth=0.8,
-                                    label=labels[0])
+                    (records, bins, _) = axs[row][col].hist(
+                        clipped_truths_momenta[feature], bins="auto", rwidth=0.9, color="red", 
+                        label=labels[1], alpha=0.7)
+                    axs[row][col].hist(
+                        clipped_preds_momenta[feature], bins=bins, color="black", rwidth=0.8,
+                        label=labels[0], alpha=0.7)
+                    max_y_value = max(records)
+                    min_x_value, max_x_value = min(bins), max(bins)
+                    axs[row][col].set_ylim((0, max_y_value + max_y_value * 0.15))
+                    axs[row][col].set_xlim((min_x_value, max_x_value))
             for row in range(0, 2):
                 for col in range(0, 2):
-                    axs[row][col].set_ylabel("Hadrons (Log Scale)")
-                    axs[row][col].set_yscale("log")
+                    axs[row][col].set_ylabel("Hadrons")
                     axs[row][col].legend(loc='upper right')
-            fig.suptitle("Hadron Kinematics Distribution\n(Cluster Rest Frame)")
+            fig.suptitle("Hadron Kinematics Distribution (Cluster Rest Frame).\n" + \
+                         "\"True\" defines the scale and limits.")
             diagrams["hadron_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
 
             # Hadron and padding token multiplicity
