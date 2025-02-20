@@ -34,9 +34,9 @@ class MultiHadronEventGANModule(LightningModule):
         self.val_gen_loss = MeanMetric()
         self.val_disc_loss = MeanMetric()
         self.current_gumbel_temp = 1.0
-        self.val_swd_1 = MeanMetric()
-        self.val_swd_2 = MeanMetric()
-        self.val_swd_3 = MeanMetric()
+        self.val_swd_token = MeanMetric()
+        self.val_swd_sentence = MeanMetric()
+        self.val_swd_hadron_multiplicity = MeanMetric()
         self.hadron_kins_dim = self.generator.hadron_kins_dim
         self.hadron_stats = None
         self.training_stats_filename = datamodule.training_stats_filename
@@ -115,18 +115,18 @@ class MultiHadronEventGANModule(LightningModule):
             swd_shape = fake_hadrons.shape
             
             # Wasserstein (reshaping: [batch_size * seq_len, features])
-            swd_1 = ot.sliced_wasserstein_distance(
+            swd_token = ot.sliced_wasserstein_distance(
                 fake_hadrons.cpu().detach().numpy().reshape(swd_shape[0] * swd_shape[1], swd_shape[2]), 
                 real_hadrons.cpu().detach().numpy().reshape(swd_shape[0] * swd_shape[1], swd_shape[2]),
                 n_projections=10*swd_shape[2])
-            self.val_swd_1(swd_1)
+            self.val_swd_token(swd_token)
 
             # Wasserstein (reshaping: [batch_size, seq_len * features])
-            swd_2 = ot.sliced_wasserstein_distance(
+            swd_sentence = ot.sliced_wasserstein_distance(
             fake_hadrons.cpu().detach().numpy().reshape(swd_shape[0], swd_shape[1] * swd_shape[2]), 
             real_hadrons.cpu().detach().numpy().reshape(swd_shape[0], swd_shape[1] * swd_shape[2]),
             n_projections=10*swd_shape[2])
-            self.val_swd_2(swd_2)
+            self.val_swd_sentence(swd_sentence)
             
             # Wassestein (comparing the number of non-padding tokens in the whole batch)
             counter_for_fake_hadrons = np.zeros((1, swd_shape[1] + 1))
@@ -140,17 +140,18 @@ class MultiHadronEventGANModule(LightningModule):
                                       for sequence in real_hadrons]
             for n in num_non_padding_tokens:
                 counter_for_real_hadrons[0, n] += 1
-            swd_3 = ot.sliced_wasserstein_distance(
+            swd_hadron_multiplicity = ot.sliced_wasserstein_distance(
                 counter_for_fake_hadrons,
                 counter_for_real_hadrons,
                 n_projections=10*(swd_shape[1]+1)
             )
 
-            self.val_swd_3(swd_3)            
+            self.val_swd_hadron_multiplicity(swd_hadron_multiplicity)            
 
             return {"gen_output": fake_hadrons.cpu().detach(), 
                     "disc_input": real_hadrons.cpu().detach(),
-                    "swd_1": swd_1, "swd_2": swd_2, "swd_3": swd_3}
+                    "swd_token": swd_token, "swd_sentence": swd_sentence, 
+                    "swd_hadron_multiplicity": swd_hadron_multiplicity}
         
         elif self.trainer.state.stage == "sanity_check":
             return {"gen_input": gen_input[:, 0, :].cpu().detach(),
@@ -216,17 +217,17 @@ class MultiHadronEventGANModule(LightningModule):
                                          sentence_stats=sentence_stats)
             
             # Computing the Wasserstein distance and sending it to the logger
-            swd_distance_1 = self.val_swd_1.compute()
-            self.log("val/swd_1", swd_distance_1)
-            self.val_swd_1.reset()
+            swd_token_distance = self.val_swd_token.compute()
+            self.log("val/swd_token", swd_token_distance)
+            self.val_swd_token.reset()
 
-            swd_distance_2 = self.val_swd_2.compute()
-            self.log("val/swd_2", swd_distance_2)
-            self.val_swd_2.reset()
+            swd_sentence_distance = self.val_swd_sentence.compute()
+            self.log("val/swd_sentence", swd_sentence_distance)
+            self.val_swd_sentence.reset()
 
-            swd_distance_3 = self.val_swd_3.compute()
-            self.log("val/swd_3", swd_distance_3)
-            self.val_swd_3.reset()
+            swd_hadron_multiplicity_distance = self.val_swd_hadron_multiplicity.compute()
+            self.log("val/swd_hadron_multiplicity", swd_hadron_multiplicity_distance)
+            self.val_swd_hadron_multiplicity.reset()
 
         elif self.trainer.state.stage == "sanity_check":
             gen_input = [d["gen_input"] for d in validation_step_outputs]
