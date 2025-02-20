@@ -403,6 +403,14 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             )
             
             # Computing values (using the training data) needed to standardise kinematics
+            self.set_training_stats(dataset)
+
+            print(f"Number of training examples: {len(self.data_train)}")
+            print(f"Number of validation examples: {len(self.data_val)}")
+            print(f"Number of test examples: {len(self.data_test)}")
+            print('-'*70)
+        
+    def set_training_stats(self, dataset):
             if os.path.exists(self.training_stats_filename):
                 print("Found training data statistics:\n   ", self.training_stats_filename,
                       '\n', '-'*70, sep='')
@@ -430,11 +438,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                     print("Computed training data statistics saved in:\n   ", 
                           self.training_stats_filename, '\n', '-'*70, sep='')    
             dataset.set_training_stats()
-            print(f"Number of training examples: {len(self.data_train)}")
-            print(f"Number of validation examples: {len(self.data_val)}")
-            print(f"Number of test examples: {len(self.data_test)}")
-            print('-'*70)
-        
+
     def train_dataloader(self):
         return DataLoader(
             dataset=self.data_train, 
