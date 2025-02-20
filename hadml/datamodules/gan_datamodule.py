@@ -370,6 +370,8 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 # Extracting all clusters from a single event
                 cluster_idx_mask = [cl == j for cl in cluster_labels[i]]
                 cluster = torch.from_numpy(cluster)
+                cluster = Cluster(kinematics=cluster[:4], quark_types=cluster[4:6], 
+                                  angles=cluster[6:])
                 cluster_in_event.append(cluster)
                 n_clusters_extracted_from_events += 1
                 # Extracting all hadrons from a single event
@@ -498,10 +500,20 @@ class MultiHadronEventGANDataModule(LightningDataModule):
 
 @dataclass
 class HadronsWithTypes:
-    """Class holding hadrons and their types/indices, 
-    assuming all originate from the same heavy cluster."""
+    """ Class holding hadrons and their types/indices, 
+    assuming all originate from the same heavy cluster. """
     kinematics: torch.Tensor # [h_kin ... h_kin]
     types: torch.Tensor      # [h_id ... h_id]
+
+    def get_kinematics_dims(self) -> int:
+        return len(self.kinematics[0])
+    
+@dataclass
+class Cluster:
+    """ Class holding cluster data. """
+    kinematics: torch.Tensor   # c_kin 
+    quark_types: torch.Tensor  # (q1_id, q2_id) 
+    angles: torch.Tensor       # (phi, theta)
 
     def get_kinematics_dims(self) -> int:
         return len(self.kinematics[0])
