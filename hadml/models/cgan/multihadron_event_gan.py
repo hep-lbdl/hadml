@@ -272,21 +272,29 @@ class MultiHadronEventGANModule(LightningModule):
                     "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
                 }
             mean, std = self.hadron_stats["energy_mean"], self.hadron_stats["energy_std"]
-            condition = (preds_kin[:, 0] >= (mean - 3*std)) * (preds_kin[:, 0] <= (mean + 3*std))
-            clipped_preds_energy = preds_kin[condition][:, 0]          
-            condition = (truths_kin[:, 0] >= (mean - 3*std)) * (truths_kin[:, 0] <= (mean + 3*std))
-            clipped_truth_energy = truths_kin[condition][:, 0]      
+            condition = (preds_kin[:, 0] >= (mean - 3*std)).logical_and(
+                preds_kin[:, 0] <= (mean + 3*std))
+            trimmed_preds_energy = preds_kin[condition][:, 0]          
+            condition = (truths_kin[:, 0] >= (mean - 3*std)).logical_and(
+                truths_kin[:, 0] <= (mean + 3*std))
+            trimmed_truth_energy = truths_kin[condition][:, 0]      
             
             mean, std = self.hadron_stats["momentum_mean"], self.hadron_stats["momentum_std"]
-            condition_1 = (preds_kin[:, 1] >= (mean - 3*std)) * (preds_kin[:, 1] <= (mean + 3*std))
-            condition_2 = (preds_kin[:, 2] >= (mean - 3*std)) * (preds_kin[:, 2] <= (mean + 3*std))
-            condition_3 = (preds_kin[:, 3] >= (mean - 3*std)) * (preds_kin[:, 3] <= (mean + 3*std))
-            clipped_preds_momenta = [preds_kin[condition_1][:, 1], preds_kin[condition_2][:, 2],
+            condition_1 = (preds_kin[:, 1] >= (mean - 3*std)).logical_and(
+                preds_kin[:, 1] <= (mean + 3*std))
+            condition_2 = (preds_kin[:, 2] >= (mean - 3*std)).logical_and(
+                preds_kin[:, 2] <= (mean + 3*std))
+            condition_3 = (preds_kin[:, 3] >= (mean - 3*std)).logical_and(
+                preds_kin[:, 3] <= (mean + 3*std))
+            trimmed_preds_momenta = [preds_kin[condition_1][:, 1], preds_kin[condition_2][:, 2],
                                      preds_kin[condition_3][:, 3]]          
-            condition_1 = (truths_kin[:, 1] >= (mean - 3*std)) * (truths_kin[:, 1] <= (mean + 3*std))
-            condition_2 = (truths_kin[:, 2] >= (mean - 3*std)) * (truths_kin[:, 2] <= (mean + 3*std))
-            condition_3 = (truths_kin[:, 3] >= (mean - 3*std)) * (truths_kin[:, 3] <= (mean + 3*std))
-            clipped_truths_momenta = [truths_kin[condition_1][:, 1], truths_kin[condition_2][:, 2],
+            condition_1 = (truths_kin[:, 1] >= (mean - 3*std)).logical_and(
+                truths_kin[:, 1] <= (mean + 3*std))
+            condition_2 = (truths_kin[:, 2] >= (mean - 3*std)).logical_and(
+                truths_kin[:, 2] <= (mean + 3*std))
+            condition_3 = (truths_kin[:, 3] >= (mean - 3*std)).logical_and(
+                truths_kin[:, 3] <= (mean + 3*std))
+            trimmed_truths_momenta = [truths_kin[condition_1][:, 1], truths_kin[condition_2][:, 2],
                                      truths_kin[condition_3][:, 3]]    
             
             # Hadron type histogram
@@ -315,13 +323,13 @@ class MultiHadronEventGANModule(LightningModule):
             fig.subplots_adjust(wspace=0.2, hspace=0.35)        
             axs[0][0].set_title("Hadron Energy Distribution")
             labels = ["Generated", "True"]
-            (records, bins, _) = axs[0][0].hist(clipped_truth_energy, bins="auto", color="red", 
+            (records, bins, _) = axs[0][0].hist(trimmed_truth_energy, bins="auto", color="red", 
                                         label=labels[1], alpha=0.7)
             max_y_value = max(records)
             min_x_value, max_x_value = min(bins), max(bins)
             axs[0][0].set_ylim((0, max_y_value + max_y_value * 0.15))
             axs[0][0].set_xlim((min_x_value, max_x_value))
-            axs[0][0].hist(clipped_preds_energy, bins=bins, color="black", label=labels[0], alpha=0.7)
+            axs[0][0].hist(trimmed_preds_energy, bins=bins, color="black", label=labels[0], alpha=0.7)
             axs[0][0].set_xlabel("Energy")
             axis = ['x', 'y', 'z']
             for row in range(0, 2):
@@ -332,10 +340,10 @@ class MultiHadronEventGANModule(LightningModule):
                     axs[row][col].set_xlabel(f"Momentum ({axis[feature].capitalize()})")
                     axs[row][col].title.set_text("Hadron Momentum Distribution")
                     (records, bins, _) = axs[row][col].hist(
-                        clipped_truths_momenta[feature], bins="auto", rwidth=0.9, color="red", 
+                        trimmed_truths_momenta[feature], bins="auto", rwidth=0.9, color="red", 
                         label=labels[1], alpha=0.7)
                     axs[row][col].hist(
-                        clipped_preds_momenta[feature], bins=bins, color="black", rwidth=0.8,
+                        trimmed_preds_momenta[feature], bins=bins, color="black", rwidth=0.8,
                         label=labels[0], alpha=0.7)
                     max_y_value = max(records)
                     min_x_value, max_x_value = min(bins), max(bins)
@@ -361,8 +369,8 @@ class MultiHadronEventGANModule(LightningModule):
             for col in range(0, 2):
                 for i in range(0, 2):
                     if col == 0:
-                        axs[col].hist(sentence_stats[f"{datatype[i]}_n_hads_per_cluster"], 
-                                            bins=bins, color=colours[i], label=labels[i], rwidth=rwidth[i])
+                        axs[col].hist(sentence_stats[f"{datatype[i]}_n_hads_per_cluster"], bins=bins,
+                                      color=colours[i], label=labels[i], rwidth=rwidth[i])
                         axs[col].set_xlabel("Number of hadrons")
                     else:
                         axs[col].hist(sentence_stats[f"{datatype[i]}_n_pad_hads_per_cluster"], 
