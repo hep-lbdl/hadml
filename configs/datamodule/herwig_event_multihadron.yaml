@@ -19,8 +19,8 @@ data_dir: "data/Herwig"
 
 # Raw file paths (the GAN datamodule will pass those arguments to an appropriate parser)
 raw_file_list:
-  # - "AllClusters_pions_272K.dat"
-  - "AllClusters_1M.dat"
+  - "AllClusters_pions_272K.dat"
+  # - "AllClusters_1M.dat"
 
 processed_filename: "pions_only_events_272K.npy"
 # processed_filename: "multihadron_events_1M.npy"
