@@ -215,18 +215,18 @@ class MultiHadronEventGANModule(LightningModule):
             # Preparing diagrams
             images = self._prepare_plots(predictions=preds.cpu(), truths=truths.cpu(),
                                          sentence_stats=sentence_stats)
-            
+
             # Computing the Wasserstein distance and sending it to the logger
             swd_token_distance = self.val_swd_token.compute()
-            self.log("val/swd_token", swd_token_distance)
+            self.log("val/swd_token", swd_token_distance, sync_dist=True)
             self.val_swd_token.reset()
 
             swd_sentence_distance = self.val_swd_sentence.compute()
-            self.log("val/swd_sentence", swd_sentence_distance)
+            self.log("val/swd_sentence", swd_sentence_distance, sync_dist=True)
             self.val_swd_sentence.reset()
 
             swd_hadron_multiplicity_distance = self.val_swd_hadron_multiplicity.compute()
-            self.log("val/swd_hadron_multiplicity", swd_hadron_multiplicity_distance)
+            self.log("val/swd_hadron_multiplicity", swd_hadron_multiplicity_distance, sync_dist=True)
             self.val_swd_hadron_multiplicity.reset()
 
         elif self.trainer.state.stage == "sanity_check":
