@@ -44,10 +44,18 @@ class MultiHadronEventGANModule(LightningModule):
     def forward(self, clusters):
         noise = self._generate_noise(*clusters.size()[:2])
         generated_hadrons = self.generator(noise.to(clusters.device), clusters)
-        hadron_kins_dim = self.generator.hadron_kins_dim
-        generated_hadrons[:, :, hadron_kins_dim:] = torch.nn.functional.gumbel_softmax(
-            generated_hadrons[:, :, hadron_kins_dim:], self.current_gumbel_temp, 
+        
+        # Applying gumbel softmax transformation on hadron types
+        generated_hadrons[:, :, self.hadron_kins_dim:] = torch.nn.functional.gumbel_softmax(
+            generated_hadrons[:, :, self.hadron_kins_dim:], self.current_gumbel_temp, 
             hard=self.hparams.gumbel_softmax_hard)
+        
+        # Zeroing kinematics of generated hadrons marked as padding tokens
+        condition = generated_hadrons[:, :, self.hadron_kins_dim] == 1.0
+        pure_padding_tokens = torch.zeros_like(generated_hadrons[condition])
+        pure_padding_tokens[:, self.hadron_kins_dim] = 1.0
+        generated_hadrons[condition] = pure_padding_tokens
+        
         return generated_hadrons
     
     def setup(self, stage=None):
