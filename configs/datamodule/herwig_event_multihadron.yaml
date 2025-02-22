@@ -5,7 +5,7 @@ batch_size: 512
 train_val_test_split: [0.8, 0.1, 0.1]
 
 # Parallel loading
-num_workers: 8    # You need to write the number of CPUs of your machine
+num_workers: 128  # You need to write the number of CPUs of your machine
                   # Example 1: running on Intel Core i5 having 
                   #   1 socket x 4 physical cores x 2 threads = 8
                   # Example 2: running on a Perlmutter (NERSC) GPU node
