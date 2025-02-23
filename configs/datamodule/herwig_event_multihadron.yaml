@@ -1,13 +1,21 @@
 _target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
 # Basic parameters
-batch_size: 32
+batch_size: 512
+train_val_test_split: [0.8, 0.1, 0.1]
+
+# Parallel loading
 num_workers: 128  # You need to write the number of CPUs of your machine
                   # Example 1: running on Intel Core i5 having 
                   #   1 socket x 4 physical cores x 2 threads = 8
                   # Example 2: running on a Perlmutter (NERSC) GPU node
                   #   1 x AMD EPYC™ 7763 (CPU) = 64 cores x 2 threads = 128
-train_val_test_split: [0.7, 0.15, 0.15]
+
+# Number of hadron types to be taken into account (e.g. 10 most common PIDs)
+# n_hadron_types: 40
+
+# Data directory
+data_dir: "data/Herwig"
 
 # Raw file paths (the GAN datamodule will pass those arguments to an appropriate parser)
 raw_file_list:
@@ -17,11 +25,14 @@ raw_file_list:
 processed_filename: "pions_only_events_272K.npy"
 # processed_filename: "multihadron_events_1M.npy"
 
+training_stats_filename: "pions_only_events_272K_train_stats.npy"
+# training_stats_filename: "multihadron_events_1M_train_stats.npy"
+
 dist_plots_filename: "dist_plots_pions_only_events_272K.pdf"
 # dist_plots_filename: "dist_plots_multihadron_events_1M.pdf"
 
 pid_map_file: "pid_to_idx_pions_only_events_272K.pkl"
-# pid_map_file: "pid_to_idx_pions_multihadron_events_1M.pkl"
+# pid_map_file: "pid_to_idx_multihadron_events_1M.pkl"
 
 # Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
 initialise_data_preparation: True

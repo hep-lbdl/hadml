@@ -12,7 +12,6 @@ from pytorch_lightning import Callback
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.utilities import rank_zero_only
 from torch import nn, Tensor
-
 from hadml.utils import pylogger, rich_utils
 
 log = pylogger.get_pylogger(__name__)
@@ -259,9 +258,13 @@ def get_r1_grad_penalty(
     gradients = torch.autograd.grad(
         outputs=score.sum(), inputs=real_inputs, create_graph=True, retain_graph=True
     )
-    gradients = torch.cat(gradients, dim=1)
+    gradients = torch.cat(gradients, dim=-1)
 
-    gradient_penalty = (gradients.norm(2, dim=1) ** 2).mean()
+    if gradients.dim() >= 3:
+        gradient_penalty = gradients.norm(2, dim=[-1, -2]).pow(2).mean() 
+    else:
+        gradient_penalty = gradients.pow(2).sum(-1).mean()
+
     return gradient_penalty
 
 

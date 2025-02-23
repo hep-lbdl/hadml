@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from dataclasses import dataclass
 
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.core.mixins import HyperparametersMixin
@@ -665,9 +666,12 @@ class HerwigMultiHadronEventDataset(Dataset):
     different types transformed to indices) and provide the DataLoader class object with prepared 
     generator and discriminator sentences. """
 
-    def __init__(self, n_had_types, clusters, hadrons_with_types, max_n_hadrons):
+    def __init__(self, n_had_types, clusters, hadrons_with_types, max_n_hadrons,
+                 training_stats_filename):
         super().__init__()
 
+        self.training_stats_filename = training_stats_filename
+        self.hadron_stats, self.cluster_stats = None, None
         self.n_had_types = n_had_types
         self.hadrons_with_types = hadrons_with_types
         self.clusters = clusters
@@ -678,31 +682,72 @@ class HerwigMultiHadronEventDataset(Dataset):
             1, hadrons_with_types[0].get_kinematics_dims() + n_had_types)
         self.hadron_padding_token[0, hadrons_with_types[0].get_kinematics_dims()] = 1.0
 
-
     def __len__(self):
         return self.n_clusters
-
 
     def __getitem__(self, index):
         """ This method is mainly responsible for tokenisation and building sentences containing 
         "cluster/hadron padding tokens". It returns a pair of prepared sentences. """
+        
+        cluster = self.clusters[index]
+        hadrons = self.hadrons_with_types[index]
+        
+        # Standardising cluster kinematics
+        if self.cluster_stats is not None:
+            cluster.kinematics[0] = cluster.kinematics[0] - self.cluster_stats.energy_mean
+            cluster.kinematics[0] = cluster.kinematics[0] / self.cluster_stats.energy_std
+            cluster.kinematics[1:4] = cluster.kinematics[1:4]- self.cluster_stats.momentum_mean
+            cluster.kinematics[1:4] = cluster.kinematics[1:4] / self.cluster_stats.momentum_std
+
+        # Standardising hadron kinematics
+        if self.cluster_stats is not None:
+            hadrons.kinematics[:, 0] = hadrons.kinematics[:, 0] - self.hadron_stats.energy_mean
+            hadrons.kinematics[:, 0] = hadrons.kinematics[:, 0] / self.hadron_stats.energy_std
+            hadrons.kinematics[:, 1:4] = hadrons.kinematics[:, 1:4] - self.hadron_stats.momentum_mean
+            hadrons.kinematics[:, 1:4] = hadrons.kinematics[:, 1:4] / self.hadron_stats.momentum_std
+
+        # Quark PIDs: (+/-) 1-8 -> transformation -> 0-16
+        cluster.quark_types = torch.where(cluster.quark_types < 0, torch.abs(cluster.quark_types), 
+                                          cluster.quark_types + 8)
 
         # Preparing the input sentence. Tokens then need to be concatenated with noise.
         # [[cluster_kin][cluster_kin]...[padding_token]] 
         # max_n_hadrons = max number of hadrons produced by the heaviest cluster
-        gen_input = torch.stack([self.clusters[index] for _ in range(self.max_n_hadrons)])
+        gen_input = torch.stack([torch.cat([cluster.kinematics, cluster.quark_types, cluster.angles]) 
+                                 for _ in range(self.max_n_hadrons)])
 
         # Preparing the output sentence. The hadron type is a one-hot vector.
         # [[hadron_kin, hadron_type][hadron_kin, hadron_type]...[padding_token]]
         # max_n_hadrons = max number of hadrons produced by the heaviest cluster
-        hadrons = self.hadrons_with_types[index].kinematics
         hadron_types = torch.nn.functional.one_hot(
             self.hadrons_with_types[index].types, self.n_had_types)
-        disc_input = torch.cat([hadrons, hadron_types], dim=1)
-        n_hadrons = len(hadrons)
+        disc_input = torch.cat([hadrons.kinematics, hadron_types], dim=1)
+        n_hadrons = len(hadrons.kinematics)
         if self.max_n_hadrons - n_hadrons > 0:
             hadron_padding_tokens = torch.cat([self.hadron_padding_token 
                                             for _ in range(self.max_n_hadrons - n_hadrons)])
             disc_input = torch.cat([disc_input, hadron_padding_tokens])
+        return gen_input.to(torch.float32), disc_input.to(torch.float32)
         
-        return gen_input, disc_input
+    def get_kinematics(self, index):
+        # Returning kinematics only for computing values needed for standardisation
+        return {"hadron_kin": self.hadrons_with_types[index].kinematics,
+                "cluster_kin": self.clusters[index].kinematics}
+    
+    def set_training_stats(self):
+        with open(self.training_stats_filename, "rb") as f:
+            stats = np.load(f, allow_pickle=True).item()
+        self.hadron_stats = KinematicStatistics(
+            momentum_mean=stats["hadron_momentum_mean"], momentum_std=stats["hadron_momentum_std"],
+            energy_mean=stats["hadron_energy_mean"], energy_std=stats["hadron_energy_std"])
+        self.cluster_stats = KinematicStatistics(
+            momentum_mean=stats["cluster_momentum_mean"], momentum_std=stats["cluster_momentum_std"],
+            energy_mean=stats["cluster_energy_mean"], energy_std=stats["cluster_energy_std"])
+
+@dataclass
+class KinematicStatistics:
+    """ Class holding statistical data related to momenta and energy. """
+    momentum_mean: float
+    momentum_std: float
+    energy_mean: float
+    energy_std: float

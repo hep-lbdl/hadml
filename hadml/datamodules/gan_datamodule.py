@@ -260,12 +260,14 @@ class MultiHadronEventGANDataModule(LightningDataModule):
             data_dir="data/Herwig",
             raw_file_list=["AllClusters_10K.dat"],
             processed_filename="herwig_multihadron_events_10K.npy",
+            training_stats_filename="herwig_multihadron_events_10K_train_stats.npy",
             dist_plots_filename="distribution_plots_10K.pdf",
             pid_map_file="pid_to_idx.pkl",
             train_val_test_split: Tuple[float, float, float] = (0.7, 0.15, 0.15),
             batch_size=32,
             num_workers=8,
             initialise_data_preparation=False,
+            n_hadron_types=None,
             debug=True
         ):
         super().__init__()
@@ -275,6 +277,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         if not os.path.exists(processed_path):
             os.makedirs(processed_path)
         self.processed_filename = os.path.join(processed_path, processed_filename)
+        self.training_stats_filename = os.path.join(processed_path, training_stats_filename)
 
         dist_plots_path = os.path.join(os.path.normpath(self.data_dir), "plots")
         if not os.path.exists(dist_plots_path):
@@ -287,12 +290,14 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
+        self.pid_map_file = pid_map_file
 
         parser = HerwigMultiHadronEventParser(
             data_dir=data_dir,
             raw_file_list=raw_file_list,
             processed_filename=processed_filename,
-            pid_map_file=pid_map_file,
+            pid_map_file=self.pid_map_file,
+            n_hadron_types=n_hadron_types,
             debug=debug
         )
         parser.parse_data()
@@ -365,6 +370,8 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 # Extracting all clusters from a single event
                 cluster_idx_mask = [cl == j for cl in cluster_labels[i]]
                 cluster = torch.from_numpy(cluster)
+                cluster = Cluster(kinematics=cluster[:4], quark_types=cluster[4:6], 
+                                  angles=cluster[6:])
                 cluster_in_event.append(cluster)
                 n_clusters_extracted_from_events += 1
                 # Extracting all hadrons from a single event
@@ -385,7 +392,8 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 self.n_had_types,
                 self.clusters,
                 self.hadrons_with_types,
-                self.max_n_hadrons)
+                self.max_n_hadrons,
+                self.training_stats_filename)
             
             # Creating the training, validation and test datasets
             self.data_train, self.data_val, self.data_test = random_split(
@@ -393,12 +401,44 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 lengths=self.train_val_test_split,
                 generator=torch.Generator().manual_seed(42),
             )
+            
+            # Computing values (using the training data) needed to standardise kinematics
+            self.set_training_stats(dataset)
 
             print(f"Number of training examples: {len(self.data_train)}")
             print(f"Number of validation examples: {len(self.data_val)}")
             print(f"Number of test examples: {len(self.data_test)}")
             print('-'*70)
         
+    def set_training_stats(self, dataset):
+            if os.path.exists(self.training_stats_filename):
+                print("Found training data statistics:\n   ", self.training_stats_filename,
+                      '\n', '-'*70, sep='')
+            else: 
+                hadron_kinematics, cluster_kinematics = [], []
+                train_dataset_idx = self.data_train.indices
+                for index in train_dataset_idx:
+                    sample = dataset.get_kinematics(index)
+                    hadron_kinematics.append(sample["hadron_kin"]) 
+                    cluster_kinematics.append(sample["cluster_kin"]) 
+                hadron_kinematics = torch.cat(hadron_kinematics, dim=0)
+                cluster_kinematics = torch.stack(cluster_kinematics, dim=0)
+                training_kinematics_stats = {
+                    "hadron_momentum_mean" : hadron_kinematics[:, 1:4].mean().to(torch.float32),
+                    "hadron_momentum_std" : hadron_kinematics[:, 1:4].std().to(torch.float32),
+                    "hadron_energy_mean" : hadron_kinematics[:, 0].mean().to(torch.float32),
+                    "hadron_energy_std" : hadron_kinematics[:, 0].std().to(torch.float32),
+                    "cluster_momentum_mean" : cluster_kinematics[:, 1:4].mean().to(torch.float32),
+                    "cluster_momentum_std" : cluster_kinematics[:, 1:4].std().to(torch.float32),
+                    "cluster_energy_mean" : cluster_kinematics[:, 0].mean().to(torch.float32),
+                    "cluster_energy_std" : cluster_kinematics[:, 0].std().to(torch.float32),
+                }
+                with open(self.training_stats_filename, "wb") as f:
+                    np.save(f, training_kinematics_stats)
+                    print("Computed training data statistics saved in:\n   ", 
+                          self.training_stats_filename, '\n', '-'*70, sep='')    
+            dataset.set_training_stats()
+
     def train_dataloader(self):
         return DataLoader(
             dataset=self.data_train, 
@@ -428,7 +468,6 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         """ Draw distribution diagrams for a list of three data sets """
         plt.clf()
         _, ax = plt.subplots(2, 2, figsize=(13, 8))
-        colors = [["black", "black"], ["orange", "orange"]]
 
         for r in range(len(data)):
             for c in range(len(data)):
@@ -445,8 +484,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                     bins = "scott"
 
                 # Preparing a chart
-                ax[r][c].hist(samples, bins=bins, color=colors[r][c], alpha=0.7,
-                        label=legend_labels[r][c])
+                ax[r][c].hist(samples, bins=bins, color="black", rwidth=0.9, label=legend_labels[r][c])
                 ax[r][c].set_xlabel(xlabels[r][c])
                 if ylabels[r][c] is not None:
                     ax[r][c].set_ylabel(ylabels[r][c])
@@ -466,10 +504,20 @@ class MultiHadronEventGANDataModule(LightningDataModule):
 
 @dataclass
 class HadronsWithTypes:
-    """Class holding hadrons and their types/indices, 
-    assuming all originate from the same heavy cluster."""
+    """ Class holding hadrons and their types/indices, 
+    assuming all originate from the same heavy cluster. """
     kinematics: torch.Tensor # [h_kin ... h_kin]
     types: torch.Tensor      # [h_id ... h_id]
+
+    def get_kinematics_dims(self) -> int:
+        return len(self.kinematics[0])
+    
+@dataclass
+class Cluster:
+    """ Class holding cluster data. """
+    kinematics: torch.Tensor   # c_kin 
+    quark_types: torch.Tensor  # (q1_id, q2_id) 
+    angles: torch.Tensor       # (phi, theta)
 
     def get_kinematics_dims(self) -> int:
         return len(self.kinematics[0])

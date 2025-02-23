@@ -33,6 +33,10 @@ class HerwigMultiHadronEventParser():
             raw_file_list,           # List of raw data filenames.
             processed_filename,      # Processed data filename.
             pid_map_file,            # PID-to-MostCommonID map filename.
+            n_hadron_types=None,     # Number of hadron types to be considered (None for all types).
+                                     # Example: n_hadron_types=10 -> the map will contain 11 keys,
+                                     # i.e. 10 for the most common PIDs and 1 for all the other 
+                                     # "uncommon" PIDs.    
             debug=False              # Number of events being processed is 
                                      # printed when True.
     ):
@@ -42,6 +46,7 @@ class HerwigMultiHadronEventParser():
         self.raw_file_list = [os.path.join(data_dir, "raw", f) for f in raw_file_list]
         self.processed_filepath = os.path.join(data_dir, "processed", processed_filename) 
         self.pids_to_idx_path = os.path.join(data_dir, "processed", pid_map_file) 
+        self.n_hadron_types = n_hadron_types
         self.debug = debug
 
     def parse_data(self):
@@ -180,7 +185,11 @@ class HerwigMultiHadronEventParser():
 
         # Mapping particle IDs to indices using the prepared PID-to-ID dictionary
         try:
-            had_type_indices = np.vectorize(self.pids_to_idx.get)(hadrons[:, [0]].astype(np.int32))
+            if self.n_hadron_types is not None:
+                had_type_indices = np.vectorize(lambda pid: self.pids_to_idx.get(
+                    pid, self.pids_to_idx["uncommon_pid"]))(hadrons[:, [0]].astype(np.int32))
+            else:
+                had_type_indices = np.vectorize(self.pids_to_idx.get)(hadrons[:, [0]].astype(np.int32))
         except Exception as X:
             # Debugging what event makes the parser stop working
             print("Line = ", event_line)
@@ -216,8 +225,10 @@ class HerwigMultiHadronEventParser():
                     print()
 
         count = Counter(hadron_types)
-        hadron_pids = list(map(lambda x: x[0], count.most_common()))
+        hadron_pids = list(map(lambda x: x[0], count.most_common(n=self.n_hadron_types)))
         pids_to_idx = {pids: i for i, pids in enumerate(hadron_pids)}
+        if self.n_hadron_types is not None:
+            pids_to_idx["uncommon_pid"] = len(pids_to_idx)
 
         with open(self.pids_to_idx_path, "wb") as f:
             pickle.dump(pids_to_idx, f)
