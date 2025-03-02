@@ -727,6 +727,11 @@ class HerwigMultiHadronEventDataset(Dataset):
             hadron_padding_tokens = torch.cat([self.hadron_padding_token 
                                             for _ in range(self.max_n_hadrons - n_hadrons)])
             disc_input = torch.cat([disc_input, hadron_padding_tokens])
+
+        # Shuffling tokens within each disc_input sentence to make it similar to what
+        # the generator returns. There is no need to shuffle gen_input as it contains noise anyway
+        disc_input = disc_input[torch.randperm(disc_input.shape[0])]
+
         return gen_input.to(torch.float32), disc_input.to(torch.float32)
         
     def get_kinematics(self, index):

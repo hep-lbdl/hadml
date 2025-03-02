@@ -1,5 +1,5 @@
 _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
-noise_dim: 4
+noise_dim: 8
 loss_type: "bce"
 r1_reg: 3000
 target_gumbel_temp: 0.30
@@ -9,10 +9,16 @@ generator:
   _target_: hadml.models.components.encoder_transformer.Generator
   pid_map_filepath: "${datamodule.data_dir}/processed/${datamodule.pid_map_file}"
   noise_dim: ${model.noise_dim}
+  num_layers: 2
+  n_heads: 4
+  dim_feedforward: 128
 
 discriminator: 
   _target_: hadml.models.components.encoder_transformer.Discriminator
   pid_map_filepath: "${datamodule.data_dir}/processed/${datamodule.pid_map_file}"
+  num_layers: 2
+  n_heads: 4
+  dim_feedforward: 128
 
 optimizer_generator:
   _target_: torch.optim.Adam

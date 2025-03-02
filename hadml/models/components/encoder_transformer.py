@@ -6,14 +6,16 @@ class Generator(torch.nn.Module):
 
     def __init__(
         self,
-        noise_dim=4,            # Arbitrary number (noise dimensionality)
-        cluster_kins_dim=8,     # Cluster four-momentum, two quark types, phi, theta
-        n_quarks=2,             # Number of quarks in cluster_kins_dim
+        noise_dim=8,            # Arbitrary number (noise dimensionality)
+        cluster_data_dim=8,     # Cluster four-momentum, two quark types, phi, theta
+        n_quarks=2,             # Number of quarks in cluster_data_dim
         quark_types=16,         # Quark types: 0-16
         hadron_kins_dim=4,      # Hadron four-momentum
-        embedding_dim=32,       # Arbitrary number (but the same for the discriminator)
-        quark_embedding_dim=4,  # Arbitrary number (quark embedding dimensionality)
-        n_heads=8,              # Encoder architecture hyperparameter
+        num_layers=2,           # Number of sub-encoder-layers in the encoder
+        embedding_dim=128,      # Arbitrary number (but the same for the discriminator)
+        dim_feedforward=128,    # Dimension of the feedforward network model used in the encoder
+        quark_embedding_dim=2,  # Arbitrary number (quark embedding dimensionality)
+        n_heads=4,              # Encoder architecture hyperparameter
         pid_map_filepath=None   # For getting information about the number of hadron most common IDs
     ):
         super().__init__()
@@ -22,11 +24,12 @@ class Generator(torch.nn.Module):
             n_hadron_types = len(pickle.load(f)) + 1
         self.quark_type_embedding_layer = torch.nn.Embedding(quark_types, quark_embedding_dim)
         self.input_embedding_layer = torch.nn.Linear(
-            noise_dim + cluster_kins_dim - n_quarks + n_quarks * quark_embedding_dim, embedding_dim
+            noise_dim + cluster_data_dim - n_quarks + n_quarks * quark_embedding_dim, embedding_dim
         )
         self.output_embedding_layer = torch.nn.Linear(embedding_dim, hadron_kins_dim + n_hadron_types)
-        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=n_heads, batch_first=True)
-        self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=6)
+        encoder_layer = torch.nn.TransformerEncoderLayer(
+            d_model=embedding_dim, nhead=n_heads, dim_feedforward=dim_feedforward, batch_first=True)
+        self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
     def forward(self, noise, cluster_kins):
         embedded_quark_types = self.quark_type_embedding_layer(cluster_kins[:, :, 4:6].to(torch.int32))
@@ -38,7 +41,7 @@ class Generator(torch.nn.Module):
         embedded_output = self.transformer_encoder(embedded_input)
         hadrons = self.output_embedding_layer(embedded_output)
         return hadrons
-    
+
 
 class Discriminator(torch.nn.Module):
     """ Discriminator implemented as a encoder-only transformer model """
@@ -46,8 +49,10 @@ class Discriminator(torch.nn.Module):
     def __init__(
         self,
         hadron_kins_dim=4,      # Hadron four-momentum
-        embedding_dim=32,       # Arbitrary number (but the same for the discriminator)
-        n_heads=8,              # Encoder architecture hyperparameter
+        num_layers=2,           # Number of sub-encoder-layers in the encoder
+        embedding_dim=128,      # Arbitrary number (but the same for the discriminator)
+        dim_feedforward=128,    # Dimension of the feedforward network model used in the encoder
+        n_heads=4,              # Encoder architecture hyperparameter
         pid_map_filepath=None   # For getting information about the number of hadron most common IDs
     ):
         super().__init__()
@@ -55,8 +60,9 @@ class Discriminator(torch.nn.Module):
             n_hadron_types = len(pickle.load(f)) + 1
         self.input_embedding_layer = torch.nn.Linear(hadron_kins_dim + n_hadron_types, embedding_dim)
         self.output_embedding_layer = torch.nn.Linear(embedding_dim, 1)
-        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=n_heads, batch_first=True)
-        self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=6)
+        encoder_layer = torch.nn.TransformerEncoderLayer(
+            d_model=embedding_dim, nhead=n_heads, dim_feedforward=dim_feedforward, batch_first=True)
+        self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
     def forward(self, hadrons):
         embedded_input = self.input_embedding_layer(hadrons)

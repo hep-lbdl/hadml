@@ -123,8 +123,7 @@ def train(cfg: DictConfig, logger=None) -> Tuple[dict, dict]:
     return metric_dict, object_dict
 
 
-@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
-def main(cfg: DictConfig) -> Optional[float]:
+def start(cfg: DictConfig) -> Optional[float]:
 
     # train the model
     metric_dict, _ = train(cfg)
@@ -138,7 +137,6 @@ def main(cfg: DictConfig) -> Optional[float]:
     return metric_value
 
 
-@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
 def sweep(cfg: DictConfig) -> Optional[float]:
     """Hyperparameter sweep example."""
     init_sweep = not cfg.get("sweep_id")
@@ -148,12 +146,20 @@ def sweep(cfg: DictConfig) -> Optional[float]:
             "method": "bayes",
             "metric": {"goal": "minimize", "name": "val/swd"},
             "parameters": {
-                "r1_reg": {"max": 5000, "min": 1, "distribution": "log_uniform_values"},
-                "lr": {"max": 0.005, "min": 0.00001, "distribution": "log_uniform_values"},
-                "batch_size": {"values": [32, 48, 64]},
-                "noise_dim": {"values": [4, 8, 16]},
-                "loss_type": {"values": ["bce", "wasserstein", "ls"]},
-                "target_gumbel_temp": {"max": 0.5, "min": 0.1, "distribution": "log_uniform_values"}
+                # General training hyperparameters
+                "r1_reg": {"values": [0, 1, 10, 100, 10_000]},
+                "batch_size": {"values": [4096, 8192, 10_000]},
+                "noise_dim": {"values": [8, 16, 24]},
+                "loss_type": {"values": ["bce"]},
+                "target_gumbel_temp": {"max": 0.5, "min": 0.1, "distribution": "log_uniform_values"},
+                
+                # Optimizer hyperparameters
+                "lr": {"values": [0.01, 0.001, 0.0001]},
+                
+                # Generator and discriminator hyperparameters 
+                "num_layers": {"values": [2, 3]},
+                "dim_feedforward": {"values": [128]},
+                "n_heads": {"values": [2, 4]},
             }
         }
         sweep_id = wandb.sweep(sweep=sweep_configuration, entity=cfg.logger.wandb.entity,
@@ -169,17 +175,35 @@ def train_wandb(cfg: DictConfig) -> None:
     """Hyperparameter sweep example."""
     logger = utils.instantiate_loggers(cfg.get("logger"))
 
+    # General training hyperparameters
     cfg.model.r1_reg = wandb.config.r1_reg
-    cfg.model.optimizer_generator.lr = wandb.config.lr
-    cfg.model.optimizer_discriminator.lr = wandb.config.lr
     cfg.model.noise_dim = wandb.config.noise_dim
     cfg.model.loss_type = wandb.config.loss_type
     cfg.model.target_gumbel_temp = wandb.config.target_gumbel_temp
     cfg.datamodule.batch_size = wandb.config.batch_size
     
+    # Optimizer hyperparameters
+    cfg.model.optimizer_generator.lr = wandb.config.lr
+    cfg.model.optimizer_discriminator.lr = wandb.config.lr
+
+    # Generator and discriminator hyperparameters 
+    cfg.model.generator.num_layers = wandb.config.num_layers
+    cfg.model.generator.dim_feedforward = wandb.config.dim_feedforward
+    cfg.model.generator.n_heads = wandb.config.n_heads
+    cfg.model.discriminator.num_layers = wandb.config.num_layers
+    cfg.model.discriminator.dim_feedforward = wandb.config.dim_feedforward
+    cfg.model.discriminator.n_heads = wandb.config.n_heads
+    
     train(cfg, logger=logger)
+
+
+@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
+def main(cfg: DictConfig) -> None:
+    if cfg.get("hyperparameter-search"):
+        sweep(cfg)
+    else:
+        start(cfg)
 
 
 if __name__ == "__main__":
     main()
-    # sweep()

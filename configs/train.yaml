@@ -50,3 +50,8 @@ ckpt_path: null
 
 # seed for random number generators in pytorch, numpy and python.random
 seed: null
+
+# set the W&B sweep configuration
+hyperparameter-search: False
+# when you obtain the sweep_id, use it with logger=wandb
+sweep_id: null

@@ -31,9 +31,10 @@ logger:
 
 # Trainer
 trainer:
-  min_epochs: 1 
-  max_epochs: 20
-  
+  # Number of optimizer steps taken
+  max_steps: 1000
+
+  # Sanity check and validation frequency
   num_sanity_val_steps: -1
   check_val_every_n_epoch: 1
   

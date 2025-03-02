@@ -1,7 +1,7 @@
 _target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
 # Basic parameters
-batch_size: 512
+batch_size: 8192
 train_val_test_split: [0.8, 0.1, 0.1]
 
 # Parallel loading
