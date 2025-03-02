@@ -31,8 +31,10 @@ logger:
 
 # Trainer
 trainer:
-  # Number of optimizer steps taken
-  max_steps: 1000
+  # Number of optimiser steps taken. Notice: we use two optimisers, so
+  # 'max_steps' should be doubled to obtain the expected training time 
+  max_steps: 2000
+  max_epochs: -1
 
   # Sanity check and validation frequency
   num_sanity_val_steps: -1
