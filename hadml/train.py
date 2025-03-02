@@ -144,7 +144,7 @@ def sweep(cfg: DictConfig) -> Optional[float]:
     if init_sweep:
         sweep_configuration = {
             "method": "bayes",
-            "metric": {"goal": "minimize", "name": "val/swd"},
+            "metric": {"goal": "minimize", "name": "val/swd_token"},
             "parameters": {
                 # General training hyperparameters
                 "r1_reg": {"values": [0, 1, 10, 100, 10_000]},
@@ -166,7 +166,7 @@ def sweep(cfg: DictConfig) -> Optional[float]:
                                project=cfg.logger.wandb.project)
         print(f"Sweep ID: {sweep_id}")
     else:
-        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=10,
+        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=5,
                     entity=cfg.logger.wandb.entity, project=cfg.logger.wandb.project)
     return None
 
