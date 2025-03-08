@@ -177,8 +177,8 @@ class MultiHadronEventGANModule(LightningModule):
         return torch.randn(batch_size, n_tokens, self.hparams.noise_dim)
     
     def _update_gumbel_temp(self):
-        progress = self.trainer.global_step / (0.8 * (self.trainer.max_steps / 2))
-        progress = 1 - (1 - max(0, progress))**2
+        progress = self.trainer.global_step / self.trainer.max_steps
+        progress = 1 - (1 - progress)**2
         self.current_gumbel_temp = 1.0 - (1 - self.hparams.target_gumbel_temp) * progress
         self.log("gumbel", self.current_gumbel_temp)
 
