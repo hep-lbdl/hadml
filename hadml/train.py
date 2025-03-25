@@ -144,7 +144,7 @@ def sweep(cfg: DictConfig) -> Optional[float]:
     if init_sweep:
         sweep_configuration = {
             "method": "bayes",  # Another option is 'grid' requiring discrete values for all parameters
-            "metric": {"goal": "minimize", "name": "val/swd_token"},
+            "metric": {"goal": "minimize", "name": "val/swd_hadron_multiplicity"},
             "parameters": {
                 # General training hyperparameters
                 "r1_reg": {"values": [0, 1, 10, 10_000]},
