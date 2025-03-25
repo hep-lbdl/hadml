@@ -143,18 +143,18 @@ def sweep(cfg: DictConfig) -> Optional[float]:
 
     if init_sweep:
         sweep_configuration = {
-            "method": "bayes",
+            "method": "bayes",  # Another option is 'grid' requiring discrete values for all parameters
             "metric": {"goal": "minimize", "name": "val/swd_token"},
             "parameters": {
                 # General training hyperparameters
-                "r1_reg": {"values": [0, 1, 10, 100, 10_000]},
-                "batch_size": {"values": [4096, 8192, 10_000]},
+                "r1_reg": {"values": [0, 1, 10, 10_000]},
+                "batch_size": {"values": [4096, 8192]},
                 "noise_dim": {"values": [8, 16, 24]},
                 "loss_type": {"values": ["bce"]},
                 "target_gumbel_temp": {"max": 0.5, "min": 0.1, "distribution": "log_uniform_values"},
                 
                 # Optimizer hyperparameters
-                "lr": {"values": [0.01, 0.001, 0.0001]},
+                "lr": {"values": [0.001, 0.0001, 0.00005]},
                 
                 # Generator and discriminator hyperparameters 
                 "num_layers": {"values": [2, 3]},
