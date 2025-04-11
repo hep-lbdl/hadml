@@ -696,7 +696,7 @@ class HerwigMultiHadronEventDataset(Dataset):
         if self.cluster_stats is not None:
             cluster.kinematics[0] = cluster.kinematics[0] - self.cluster_stats.energy_mean
             cluster.kinematics[0] = cluster.kinematics[0] / self.cluster_stats.energy_std
-            cluster.kinematics[1:4] = cluster.kinematics[1:4]- self.cluster_stats.momentum_mean
+            cluster.kinematics[1:4] = cluster.kinematics[1:4] - self.cluster_stats.momentum_mean
             cluster.kinematics[1:4] = cluster.kinematics[1:4] / self.cluster_stats.momentum_std
 
         # Standardising hadron kinematics

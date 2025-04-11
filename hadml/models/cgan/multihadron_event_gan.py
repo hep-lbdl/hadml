@@ -24,6 +24,7 @@ class MultiHadronEventGANModule(LightningModule):
         r1_reg: float,
         target_gumbel_temp: float = 0.3,
         gumbel_softmax_hard: bool = False,
+        deviation_coeff: float = 0.0
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["generator", "discriminator"])
@@ -38,8 +39,15 @@ class MultiHadronEventGANModule(LightningModule):
         self.val_swd_sentence = MeanMetric()
         self.val_swd_hadron_multiplicity = MeanMetric()
         self.hadron_kins_dim = self.generator.hadron_kins_dim
+        
         self.hadron_stats = None
         self.training_stats_filename = datamodule.training_stats_filename
+        with open(self.training_stats_filename, "rb") as f:
+            stats = np.load(f, allow_pickle=True).item()
+        self.hadron_stats = {
+            "momentum_mean" : stats["hadron_momentum_mean"], "momentum_std" : stats["hadron_momentum_std"],
+            "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
+        }
 
     def forward(self, clusters):
         noise = self._generate_noise(*clusters.size()[:2])
@@ -72,14 +80,37 @@ class MultiHadronEventGANModule(LightningModule):
         if optimizer_idx == 0:
             # Training the generator
             generator_loss = self._generator_loss(score_for_fake)
+
+            if self.hparams.deviation_coeff > 0:
+                # Destandardising fake hadrons
+                condition = fake_hadrons[:, :, self.hadron_kins_dim] == 0.0
+                destandardised_energy = fake_hadrons[condition][:, 0] * \
+                    self.hadron_stats["energy_std"] + self.hadron_stats["energy_mean"]
+                destandardised_momentum = fake_hadrons[condition][:, 1:4] * \
+                    self.hadron_stats["momentum_std"] + self.hadron_stats["momentum_mean"]
+                hadron_types = fake_hadrons[condition][:, 4:]
+                fake_hadrons[condition] = torch.concatenate([
+                    destandardised_energy.reshape((-1, 1)), destandardised_momentum, hadron_types], 
+                    dim=1)
+                
+                # Computing deviation from the conservation law
+                expected_momentum_sum = torch.zeros((fake_hadrons.shape[0], 4)).to(fake_hadrons.device)
+                expected_momentum_sum[:, 0] = 1.0
+                deviation = (expected_momentum_sum - fake_hadrons[:, :, :4].sum(axis=1)).abs().sum()
+                deviation = deviation / fake_hadrons.shape[0]
+                self.log("deviation_from_conservation_law", deviation, prog_bar=True)
+                generator_loss += self.hparams.deviation_coeff * deviation
+
             self.train_gen_loss(generator_loss)
             self.log("generator_loss", generator_loss, prog_bar=True)
             loss = generator_loss
+        
         else:
             # Training the discriminator
             score_for_real = self.discriminator(real_hadrons)
             discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
             self.log("discriminator_loss", discriminator_loss, prog_bar=True)
+        
             # Computing the R1 gradient penalty
             r1_grad_penalty = 0.0
             if self.hparams.r1_reg > 0:
@@ -88,6 +119,7 @@ class MultiHadronEventGANModule(LightningModule):
                         get_r1_grad_penalty(self.discriminator, [real_hadrons]) * self.hparams.r1_reg)
                 self.log("r1_grad_penalty", r1_grad_penalty)
             loss = discriminator_loss + r1_grad_penalty
+        
         return {"loss": loss}
 
     def _generator_loss(self, score):
@@ -271,13 +303,6 @@ class MultiHadronEventGANModule(LightningModule):
             truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
 
             # Clipping the range to ignore outliers lying beyond 3 sigmas
-            if self.hadron_stats is None:
-                with open(self.training_stats_filename, "rb") as f:
-                    stats = np.load(f, allow_pickle=True).item()
-                self.hadron_stats = {
-                    "momentum_mean" : stats["hadron_momentum_mean"], "momentum_std" : stats["hadron_momentum_std"],
-                    "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
-                }
             mean, std = self.hadron_stats["energy_mean"], self.hadron_stats["energy_std"]
             condition = (preds_kin[:, 0] >= (mean - 3*std)).logical_and(
                 preds_kin[:, 0] <= (mean + 3*std))

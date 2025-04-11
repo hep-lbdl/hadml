@@ -4,6 +4,7 @@ loss_type: "bce"
 r1_reg: 3000
 target_gumbel_temp: 0.30
 gumbel_softmax_hard: True
+deviation_coeff: 0.1
 
 generator: 
   _target_: hadml.models.components.encoder_transformer.Generator
