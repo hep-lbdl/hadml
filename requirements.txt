@@ -3,6 +3,7 @@ torch>=1.10.0
 torchvision>=0.11.0
 pytorch-lightning==1.8.1
 torchmetrics==0.10.0
+pytorch-geometric
 
 # --------- hydra --------- #
 hydra-core==1.2.0
@@ -24,4 +25,6 @@ more_itertools
 pandas
 matplotlib
 pot
+scikit-learn
+numpy<2.0
 # sh            # for running bash commands in some tests (linux/macos only)

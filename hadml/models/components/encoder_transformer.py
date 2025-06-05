@@ -38,7 +38,12 @@ class Generator(torch.nn.Module):
                                           cluster_kins[:, :, 6:]), dim=2)
         clusters_and_noise = torch.concatenate((cluster_kins, noise), dim=2)
         embedded_input = self.input_embedding_layer(clusters_and_noise)
-        embedded_output = self.transformer_encoder(embedded_input)
+
+        # Preparing the causal mask
+        src_mask = torch.nn.Transformer.generate_square_subsequent_mask(
+            embedded_input.size(1)).to(embedded_input.device)
+        
+        embedded_output = self.transformer_encoder(embedded_input, mask=src_mask, is_causal=True)
         hadrons = self.output_embedding_layer(embedded_output)
         return hadrons
 
@@ -66,6 +71,11 @@ class Discriminator(torch.nn.Module):
 
     def forward(self, hadrons):
         embedded_input = self.input_embedding_layer(hadrons)
-        embedded_output = self.transformer_encoder(embedded_input)
+        
+        # Preparing the causal mask
+        src_mask = torch.nn.Transformer.generate_square_subsequent_mask(
+            embedded_input.size(1)).to(embedded_input.device)
+        
+        embedded_output = self.transformer_encoder(embedded_input, mask=src_mask, is_causal=True)
         real_or_fake_response = self.output_embedding_layer(embedded_output)
         return real_or_fake_response.mean(dim=1)
