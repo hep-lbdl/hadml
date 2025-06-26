@@ -34,5 +34,6 @@ dist_plots_filename: "dist_plots_pions_only_events_272K.pdf"
 pid_map_file: "pid_to_idx_pions_only_events_272K.pkl"
 # pid_map_file: "pid_to_idx_multihadron_events_1M.pkl"
 
-# Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
+# Use it if you want to invoke data preparation and prepare training statistics
+# (e.g. mean and std of each feature) before training
 initialise_data_preparation: True
