@@ -46,7 +46,14 @@ OmegaConf.register_new_resolver("sum", lambda x, y: x + y)
 OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
 
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
+from pytorch_lightning.loggers import WandbLogger
+try:
+    from pytorch_lightning.loggers import LightningLoggerBase
+except ImportError:
+    try:
+        from pytorch_lightning.loggers.base import LightningLoggerBase
+    except ImportError:
+        from pytorch_lightning.loggers.logger import Logger as LightningLoggerBase
 from hadml import utils
 
 log = utils.get_pylogger(__name__)
