@@ -28,3 +28,4 @@ pot
 scikit-learn
 numpy<2.0
 # sh            # for running bash commands in some tests (linux/macos only)
+particle

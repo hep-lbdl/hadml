@@ -63,7 +63,7 @@ class RootFinderMass(torch.autograd.Function):
         """
         # solve for xi in massive case, see Ref. [1]
         e_cm = p0.sum(dim=1)
-        func = lambda x: func_mass(x, p0, mass, e_cm)
+        func = lambda x: func_mass(x.to(p0.device), p0, mass, e_cm)
         dxif = lambda x: dxifunc_mass(x, p0, mass)
         dpf = lambda x: dpfunc_mass(x, p0, mass)
         guess = 0.5 * torch.ones((p0.shape[0],))

@@ -99,7 +99,7 @@ class RamboOnDiet(PhaseSpaceMapping):
         pnm1 = map_fourvector_rambo_diet(q, cos_theta, phi)
 
         # Define Qs
-        Q = e_cm[:, None] * torch.tile(torch.tensor([1, 0, 0, 0]), (r.shape[0], 1))
+        Q = e_cm[:, None] * torch.tile(torch.tensor([1, 0, 0, 0]), (r.shape[0], 1)).to(e_cm.device)
 
         # Define loop over (n-1 particles) boosts
         for i in range(self.nparticles - 1):
@@ -132,8 +132,8 @@ class RamboOnDiet(PhaseSpaceMapping):
             # Make momenta massive
             xi = xi[:, None, None]
             k_out = torch.empty_like(p_out)
-            k_out[:, :, 0] = sqrt(m**2 + xi[:, :, 0] ** 2 * p_out[:, :, 0] ** 2)
-            k_out[:, :, 1:] = xi * p_out[:, :, 1:]
+            k_out[:, :, 0] = sqrt((m**2).to(xi.device) + xi[:, :, 0] ** 2 * p_out[:, :, 0].to(xi.device) ** 2)
+            k_out[:, :, 1:] = xi * p_out[:, :, 1:].to(xi.device)
             # Get massive density corr. factor
             w_m = self._massive_weight(k_out, p_out, xi[:, 0, 0])
 
@@ -237,7 +237,7 @@ class RamboOnDiet(PhaseSpaceMapping):
         k0 = k[:, :, 0]
         p0 = p[:, :, 0]
         w_M = (
-            xi ** (3 * self.nparticles - 3)
+            xi.to(k.device) ** (3 * self.nparticles - 3)
             * torch.prod(p0 / k0, dim=1)
             * torch.sum(ps2 / p0, dim=1)
             / torch.sum(ks2 / k0, dim=1)

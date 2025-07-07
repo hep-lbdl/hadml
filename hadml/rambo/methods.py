@@ -30,8 +30,8 @@ def newton(
 
     for _ in range(max_iter):
         # do newtons-step but make sure gradient is not too small
-        df0 = torch.where(df(x0) < epsilon, epsilon, df(x0))
-        x1 = x0 - f(x0) / df0
+        df0 = torch.where(df(x0) < epsilon, epsilon, df(x0)).to(x0.device)
+        x1 = x0 - f(x0).to(x0.device) / df0
 
         # check if within given intervall
         higher = x1 > xb
@@ -46,7 +46,7 @@ def newton(
             return x1
 
         # Adjust brackets
-        low = f(x1) * f(xa) > 0
+        low = f(x1).to(x0.device) * f(xa).to(x0.device) > 0
         xa[low] = x1[low]
         xb[~low] = x1[~low]
 

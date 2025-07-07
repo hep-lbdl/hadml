@@ -22,7 +22,7 @@ def func_polynomial(u: Tensor, nparticles: int, xs: Tensor) -> Tensor:
     Returns:
         Tensor: function of interest
     """
-    i = torch.arange(2, nparticles)[None, :]
+    i = torch.arange(2, nparticles)[None, :].to(u.device)
     f = (
         (nparticles + 1 - i) * u ** (2 * (nparticles - i))
         - (nparticles - i) * u ** (2 * (nparticles + 1 - i))
@@ -33,7 +33,7 @@ def func_polynomial(u: Tensor, nparticles: int, xs: Tensor) -> Tensor:
 
 def dfunc_polynomial(u: Tensor, nparticles: int) -> Tensor:
     """Gradient of func_polynomial with respect to u"""
-    i = torch.arange(2, nparticles)[None, :]
+    i = torch.arange(2, nparticles)[None, :].to(u.device)
     df = (nparticles + 1 - i) * (2 * (nparticles - i)) * u ** (
         2 * (nparticles - i) - 1
     ) - (nparticles - i) * (2 * (nparticles + 1 - i)) * u ** (
@@ -66,13 +66,13 @@ def func_mass(xi: Tensor, p0: Tensor, m: Tensor, e_cm: Tensor) -> Tensor:
 
 def dxifunc_mass(xi: Tensor, p0: Tensor, m: Tensor) -> Tensor:
     """Gradient of func_mass with respect to xi"""
-    root = sqrt(xi[:, None] ** 2 * p0**2 + m**2)
-    df = torch.sum(xi[:, None] * p0**2 / root, dim=-1)
+    root = sqrt(xi[:, None] ** 2 * (p0**2).to(xi.device) + (m**2).to(xi.device))
+    df = torch.sum(xi[:, None] * (p0**2).to(xi.device) / root, dim=-1).to(xi.device)
     return df
 
 
 def dpfunc_mass(xi: Tensor, p0: Tensor, m: Tensor) -> Tensor:
     """Gradient of func_mass with respect to all pi"""
-    root = sqrt(xi[:, None] ** 2 * p0**2 + m**2)
-    df = xi[:, None] ** 2 * p0 / root - 1.0
+    root = sqrt(xi[:, None] ** 2 * (p0**2).to(xi.device) + (m**2).to(xi.device))
+    df = xi[:, None] ** 2 * p0.to(xi.device) / root - 1.0
     return df
