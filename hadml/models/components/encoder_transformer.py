@@ -2,7 +2,7 @@ import torch, os, pickle
 from particle import Particle
 from hadml.rambo.rambo_on_diet import RamboOnDiet
 from hadml.rambo.additional_helpers import get_invariant_mass
-import numpy as np
+import time
 
 
 class Generator(torch.nn.Module):
@@ -39,6 +39,7 @@ class Generator(torch.nn.Module):
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=embedding_dim, nhead=n_heads, dim_feedforward=dim_feedforward, batch_first=True)
         self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.rambo = RamboOnDiet()
 
     def forward(self, noise, cluster_kins):
         embedded_quark_types = self.quark_type_embedding_layer(cluster_kins[:, :, 4:6].to(torch.int32))
@@ -58,6 +59,9 @@ class Generator(torch.nn.Module):
         # The first 3 dimensions are phase space random variables, the rest are hadron IDs  
         output = self.output_embedding_layer(embedded_output)
         
+        # Clamp values to avoid numerical instability
+        output = torch.clamp(output, min=-1e6, max=1e6)
+
         # Applying Gumbel-Softmax to the hadron IDs
         output[:, :, self.space_phase_dim:] = torch.nn.functional.gumbel_softmax(
             output[:, :, self.space_phase_dim:],
@@ -72,7 +76,6 @@ class Generator(torch.nn.Module):
         pure_padding[:, self.space_phase_dim] = 1.0
         output[pad_mask] = pure_padding
 
-
         # Moving all padding tokens to end of each sequence, keep relative order of the rest
         pad_indicator = pad_mask.to(torch.int64)    # 1 for pad, 0 otherwise
         order = torch.argsort(pad_indicator, dim=1) # non‐pads (0) come first
@@ -80,12 +83,10 @@ class Generator(torch.nn.Module):
 
         # Applying Rambo on diet to get the hadron four-momenta
         cluster_invariant_masses = get_invariant_mass(cluster_kins[:, 0, :4].reshape(-1, 4))
-
         new_output = []
 
         # TODO: is there a way to vectorize this?
         for seq, E_CM in zip(output, cluster_invariant_masses):
-        
             # Separating phase space variables and hadron IDs
             pad_mask = seq[:, self.space_phase_dim] == 1.0
             phase_space_vars = seq[~pad_mask, :self.space_phase_dim]
@@ -96,39 +97,46 @@ class Generator(torch.nn.Module):
             # Getting masses based on hadron PIDs
             pids = torch.tensor([self.pid_map[hadron_id.item()] for hadron_id in hadron_ids])
             masses = torch.tensor([Particle.from_pdgid(pid).mass / 1000 for pid in pids], device=seq.device)
-            
-            # Normalize phase_space_vars to [0, 1]
-            # TODO: problemactic for backward pass
-            eps = 1e-8
-            min_val = phase_space_vars.min()
-            max_val = phase_space_vars.max()
-            denom = max_val - min_val
-            if denom.abs() < eps:
-                phase_space_vars_norm = phase_space_vars
-            else:
-                phase_space_vars_norm = (phase_space_vars - min_val) / (denom + eps)
-
-            # Flatten and pad/truncate to correct length for RamboOnDiet
             n_particles = len(masses)
-            required_len = 3 * n_particles - 4
-            flat = phase_space_vars_norm.flatten()
-            if flat.numel() < required_len:
-                pad = torch.zeros(required_len - flat.numel(), device=flat.device, dtype=flat.dtype)
-                phase_space_vars_norm = torch.cat([flat, pad], dim=0).reshape(1, -1)
+
+            if masses.sum() < E_CM and n_particles >= 2:
+                # Normalise phase_space_vars to [0, 1] with improved handling
+                eps = 1e-8
+                min_val = phase_space_vars.min()
+                max_val = phase_space_vars.max()
+                denom = max_val - min_val
+                if denom.abs() < eps:
+                    phase_space_vars_norm = phase_space_vars
+                else:
+                    phase_space_vars_norm = (phase_space_vars - min_val) / (denom + eps)
+
+                # Flatten and pad/truncate to correct length for RamboOnDiet
+                required_len = 3 * n_particles - 4
+                flat = phase_space_vars_norm.flatten()
+                if flat.numel() < required_len:
+                    pad = torch.zeros(required_len - flat.numel(), device=flat.device, dtype=flat.dtype)
+                    phase_space_vars_norm = torch.cat([flat, pad], dim=0).reshape(1, -1)
+                else:
+                    phase_space_vars_norm = flat[:required_len].reshape(1, -1)
+                
+                # Applying Rambo on diet to get the hadron four-momenta
+                device = phase_space_vars.device
+                try:
+                    # start_time = time.time()
+                    (p,), _ = self.rambo.map(inputs=[phase_space_vars_norm.to(device), torch.tensor([E_CM]).to(device)],
+                                        nparticles=n_particles, masses=masses)
+                    # elapsed = time.time() - start_time
+                    # print(f"Loop step took {elapsed:.6f} seconds")
+                    # Getting rid of the first two zeroed particles (initial state)
+                    p = p[:, 2:] 
+                except Exception as e:
+                    # If Rambo fails, we just return zero momenta
+                    print(f"RamboOnDiet failed: {e}. Returning zero momenta.")
+                    p = torch.zeros((1, n_particles, 4), device=seq.device)
             else:
-                phase_space_vars_norm = flat[:required_len].reshape(1, -1)
+                # If the invariant mass is too large, we just return zero momenta
+                p = torch.zeros((1, n_particles, 4), device=seq.device)
             
-            # TODO: problem -> lack of energy for many non-padding tokens
-            E_CM = E_CM + 10
-
-            # Applying Rambo on diet to get the hadron four-momenta
-            device = phase_space_vars.device
-            rambo = RamboOnDiet(nparticles=len(masses), masses=masses)
-            (p,), _ = rambo.map([phase_space_vars_norm.to(device), torch.tensor([E_CM]).to(device)])
-            
-            # Getting rid of the first two zeroed particles (initial state)
-            p = p[:, 2:]
-
             # Adding padding tokens back to the output
             new_output.append(
                 torch.cat([

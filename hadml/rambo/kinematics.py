@@ -340,7 +340,7 @@ def mass(a: Tensor) -> Tensor:
     Returns:
         Tensor: mass with shape=(b,...)
     """
-    return sqrt(torch.clip(lsquare(a), min=0.0))
+    return sqrt(torch.clip(lsquare(a), min=EPS))
 
 
 def lsquare(a: Tensor) -> Tensor:
