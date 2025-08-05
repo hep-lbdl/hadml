@@ -331,11 +331,10 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         cluster_labels = data.item()["cluster_labels"]
         n_events = len(cluster_kin)
         self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop/padding token
-        hadron_kin_rest_frame = data.item()["had_kin_rest_frame"]
 
         # Assigning hadrons to clusters 
         self.clusters, self.hadrons_with_types, n = self._get_hadrons_and_clusters__(
-            n_events, cluster_kin, cluster_labels, hadron_kin_rest_frame, had_type_indices)
+            n_events, cluster_kin, cluster_labels, hadron_kin, had_type_indices)
         n_clusters_extracted_from_events = n
         n_hadrons_per_cluster = [len(hadron_seq.types) for hadron_seq in self.hadrons_with_types]
         self.max_n_hadrons = max(n_hadrons_per_cluster)

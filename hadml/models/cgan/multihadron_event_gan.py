@@ -66,32 +66,20 @@ class MultiHadronEventGANModule(LightningModule):
         
         gen_input, real_hadrons = batch
         fake_hadrons = self(gen_input)
+
+        # Check for NaN values in fake_hadrons
+        if torch.isnan(fake_hadrons).any():
+            raise ValueError("NaN detected in fake_hadrons")
+
         score_for_fake = self.discriminator(fake_hadrons)
+
+        # Check for NaN values in score_for_fake
+        if torch.isnan(score_for_fake).any():
+            raise ValueError("NaN detected in score_for_fake")
 
         if optimizer_idx == 0:
             # Training the generator
             generator_loss = self._generator_loss(score_for_fake)
-
-            if self.hparams.deviation_coeff > 0:
-                # Destandardising fake hadrons
-                condition = fake_hadrons[:, :, self.hadron_kins_dim] == 0.0
-                destandardised_energy = fake_hadrons[condition][:, 0] * \
-                    self.hadron_stats["energy_std"] + self.hadron_stats["energy_mean"]
-                destandardised_momentum = fake_hadrons[condition][:, 1:4] * \
-                    self.hadron_stats["momentum_std"] + self.hadron_stats["momentum_mean"]
-                hadron_types = fake_hadrons[condition][:, 4:]
-                fake_hadrons[condition] = torch.concatenate([
-                    destandardised_energy.reshape((-1, 1)), destandardised_momentum, hadron_types], 
-                    dim=1)
-                
-                # Computing deviation from the conservation law
-                expected_momentum_sum = torch.zeros((fake_hadrons.shape[0], 4)).to(fake_hadrons.device)
-                expected_momentum_sum[:, 0] = 1.0
-                deviation = (expected_momentum_sum - fake_hadrons[:, :, :4].sum(axis=1)).abs().sum()
-                deviation = deviation / fake_hadrons.shape[0]
-                self.log("deviation_from_conservation_law", deviation, prog_bar=True)
-                generator_loss += self.hparams.deviation_coeff * deviation
-
             self.train_gen_loss(generator_loss)
             self.log("generator_loss", generator_loss, prog_bar=True)
             loss = generator_loss
@@ -291,34 +279,7 @@ class MultiHadronEventGANModule(LightningModule):
             preds_kin = predictions[predictions[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
             preds_types = torch.argmax(predictions[:, self.hadron_kins_dim:], dim=1) - 1
             truths_kin = truths[truths[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
-            truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
-
-            # Clipping the range to ignore outliers lying beyond 3 sigmas
-            mean, std = self.hadron_stats["energy_mean"], self.hadron_stats["energy_std"]
-            condition = (preds_kin[:, 0] >= (mean - 3*std)).logical_and(
-                preds_kin[:, 0] <= (mean + 3*std))
-            trimmed_preds_energy = preds_kin[condition][:, 0]          
-            condition = (truths_kin[:, 0] >= (mean - 3*std)).logical_and(
-                truths_kin[:, 0] <= (mean + 3*std))
-            trimmed_truth_energy = truths_kin[condition][:, 0]      
-            
-            mean, std = self.hadron_stats["momentum_mean"], self.hadron_stats["momentum_std"]
-            condition_1 = (preds_kin[:, 1] >= (mean - 3*std)).logical_and(
-                preds_kin[:, 1] <= (mean + 3*std))
-            condition_2 = (preds_kin[:, 2] >= (mean - 3*std)).logical_and(
-                preds_kin[:, 2] <= (mean + 3*std))
-            condition_3 = (preds_kin[:, 3] >= (mean - 3*std)).logical_and(
-                preds_kin[:, 3] <= (mean + 3*std))
-            trimmed_preds_momenta = [preds_kin[condition_1][:, 1], preds_kin[condition_2][:, 2],
-                                     preds_kin[condition_3][:, 3]]          
-            condition_1 = (truths_kin[:, 1] >= (mean - 3*std)).logical_and(
-                truths_kin[:, 1] <= (mean + 3*std))
-            condition_2 = (truths_kin[:, 2] >= (mean - 3*std)).logical_and(
-                truths_kin[:, 2] <= (mean + 3*std))
-            condition_3 = (truths_kin[:, 3] >= (mean - 3*std)).logical_and(
-                truths_kin[:, 3] <= (mean + 3*std))
-            trimmed_truths_momenta = [truths_kin[condition_1][:, 1], truths_kin[condition_2][:, 2],
-                                     truths_kin[condition_3][:, 3]]    
+            truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1  
             
             # Hadron type histogram
             sample_range = [0, truths_types.max()]
@@ -346,13 +307,11 @@ class MultiHadronEventGANModule(LightningModule):
             fig.subplots_adjust(wspace=0.2, hspace=0.35)        
             axs[0][0].set_title("Hadron Energy Distribution")
             labels = ["Generated", "True"]
-            (records, bins, _) = axs[0][0].hist(trimmed_truth_energy, bins="auto", color="red", 
+            (records, bins, _) = axs[0][0].hist(truths_kin[:, 0], bins="auto", color="red", 
                                         label=labels[1], alpha=0.7)
-            max_y_value = max(records)
             min_x_value, max_x_value = min(bins), max(bins)
-            axs[0][0].set_ylim((0, max_y_value + max_y_value * 0.15))
             axs[0][0].set_xlim((min_x_value, max_x_value))
-            axs[0][0].hist(trimmed_preds_energy, bins=bins, color="black", label=labels[0], alpha=0.7)
+            axs[0][0].hist(preds_kin[:, 0], bins=bins, color="black", label=labels[0], alpha=0.7)
             axs[0][0].set_xlabel("Energy")
             axis = ['x', 'y', 'z']
             for row in range(0, 2):
@@ -363,14 +322,12 @@ class MultiHadronEventGANModule(LightningModule):
                     axs[row][col].set_xlabel(f"Momentum ({axis[feature].capitalize()})")
                     axs[row][col].title.set_text("Hadron Momentum Distribution")
                     (records, bins, _) = axs[row][col].hist(
-                        trimmed_truths_momenta[feature], bins="auto", rwidth=0.9, color="red", 
+                        truths_kin[:, feature], bins="auto", rwidth=0.9, color="red", 
                         label=labels[1], alpha=0.7)
                     axs[row][col].hist(
-                        trimmed_preds_momenta[feature], bins=bins, color="black", rwidth=0.8,
+                        preds_kin[:, feature], bins=bins, color="black", rwidth=0.8,
                         label=labels[0], alpha=0.7)
-                    max_y_value = max(records)
                     min_x_value, max_x_value = min(bins), max(bins)
-                    axs[row][col].set_ylim((0, max_y_value + max_y_value * 0.15))
                     axs[row][col].set_xlim((min_x_value, max_x_value))
             for row in range(0, 2):
                 for col in range(0, 2):
@@ -404,7 +361,8 @@ class MultiHadronEventGANModule(LightningModule):
             fig.suptitle("Sentence Statistics")
             plt.tight_layout()
             diagrams["sentence_statistics_hist"] = fig_to_array(fig, tight_layout=False)
-        
+            # plt.show()
+
         elif clusters is not None and truths is not None:
             diagrams = {}
             kinematics = clusters[:, :4]

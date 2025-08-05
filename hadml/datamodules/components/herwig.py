@@ -692,20 +692,6 @@ class HerwigMultiHadronEventDataset(Dataset):
         cluster = self.clusters[index]
         hadrons = self.hadrons_with_types[index]
         
-        # Standardising cluster kinematics (Uncomment if you do not use RamboOnDiet)
-        # if self.cluster_stats is not None:
-        #     cluster.kinematics[0] = cluster.kinematics[0] - self.cluster_stats.energy_mean
-        #     cluster.kinematics[0] = cluster.kinematics[0] / self.cluster_stats.energy_std
-        #     cluster.kinematics[1:4] = cluster.kinematics[1:4] - self.cluster_stats.momentum_mean
-        #     cluster.kinematics[1:4] = cluster.kinematics[1:4] / self.cluster_stats.momentum_std
-
-        # Standardising hadron kinematics
-        if self.cluster_stats is not None:
-            hadrons.kinematics[:, 0] = hadrons.kinematics[:, 0] - self.hadron_stats.energy_mean
-            hadrons.kinematics[:, 0] = hadrons.kinematics[:, 0] / self.hadron_stats.energy_std
-            hadrons.kinematics[:, 1:4] = hadrons.kinematics[:, 1:4] - self.hadron_stats.momentum_mean
-            hadrons.kinematics[:, 1:4] = hadrons.kinematics[:, 1:4] / self.hadron_stats.momentum_std
-
         # Quark PIDs: (+/-) 1-8 -> transformation -> 0-16
         cluster.quark_types = torch.where(cluster.quark_types < 0, torch.abs(cluster.quark_types), 
                                           cluster.quark_types + 8)
@@ -728,10 +714,6 @@ class HerwigMultiHadronEventDataset(Dataset):
                                             for _ in range(self.max_n_hadrons - n_hadrons)])
             disc_input = torch.cat([disc_input, hadron_padding_tokens])
 
-        # Shuffling tokens within each disc_input sentence to make it similar to what
-        # the generator returns. There is no need to shuffle gen_input as it contains noise anyway
-        disc_input = disc_input[torch.randperm(disc_input.shape[0])]
-
         return gen_input.to(torch.float32), disc_input.to(torch.float32)
         
     def get_kinematics(self, index):
@@ -748,6 +730,7 @@ class HerwigMultiHadronEventDataset(Dataset):
         self.cluster_stats = KinematicStatistics(
             momentum_mean=stats["cluster_momentum_mean"], momentum_std=stats["cluster_momentum_std"],
             energy_mean=stats["cluster_energy_mean"], energy_std=stats["cluster_energy_std"])
+
 
 @dataclass
 class KinematicStatistics:
