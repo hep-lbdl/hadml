@@ -1,6 +1,46 @@
 import torch
 
 
+import torch
+
+def vectorized_boost(momenta_4, total_4_momenta, inverse=False):
+    k = momenta_4
+    P = total_4_momenta
+
+    E = P[:, 0]
+    p_vec = P[:, 1:]
+
+    beta = p_vec / E.unsqueeze(1)              # (B,3)
+    beta2 = (beta ** 2).sum(dim=1)             # (B,)
+    gamma = 1.0 / torch.sqrt(1 - beta2)        # (B,)
+
+    if inverse:
+        beta = -beta
+
+    beta  = beta[:, None, :]                   # (B,1,3)
+    gamma = gamma[:, None, None]               # (B,1,1)
+
+    # Stable expression: (γ−1)/β² = 1/(1+γ)
+    gm1_over_beta2 = 1.0 / (1.0 + gamma)       # (B,1,1)
+
+    k0   = k[:, :, 0:1]
+    kvec = k[:, :, 1:]
+
+    beta_dot_k = (beta * kvec).sum(dim=2, keepdim=True)
+
+    k0_new = gamma * (k0 - beta_dot_k)
+
+    kvec_new = (
+        kvec
+        + gm1_over_beta2 * beta_dot_k * beta   # uses stable formula
+        - gamma * k0 * beta
+    )
+
+    return torch.cat([k0_new, kvec_new], dim=2)
+
+
+
+
 def lorentz_boost(hadrons_rest_frame, cluster, inverse=False):
     eps = 1e-6
     E_clamped = cluster[0].clamp(min=eps)
