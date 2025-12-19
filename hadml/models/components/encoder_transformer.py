@@ -60,7 +60,6 @@ class Generator(torch.nn.Module):
         # create mass_tensor
         self.mass_tensor = torch.tensor([Particle.from_pdgid(pid).mass / 1000 for pid in self.pid_map.values()])
 
-
         n_hadron_types = len(raw_pid_map) + 1
  
         self.quark_type_embedding_layer = torch.nn.Embedding(quark_types, quark_embedding_dim)
@@ -72,7 +71,7 @@ class Generator(torch.nn.Module):
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=embedding_dim, nhead=n_heads, dim_feedforward=dim_feedforward, batch_first=True)
         self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.rambo = RamboOnDiet()
+      #  self.rambo = RamboOnDiet()
         #self.rambo = NearlyRambo()
 
     def forward(self, noise, cluster_kins):
@@ -81,34 +80,24 @@ class Generator(torch.nn.Module):
         embedded_quark_types = embedded_quark_types.reshape(*embedded_quark_types.size()[:2], -1)
         cluster_kins = torch.concatenate((cluster_kins[:, :, :4], embedded_quark_types, 
                                           cluster_kins[:, :, 6:]), dim=2)
-      #  print('cluster kins and noise shapes:')
-       # print(cluster_kins.shape, noise.shape)
+
         clusters_and_noise = torch.concatenate((cluster_kins, noise), dim=2)
         embedded_input = self.input_embedding_layer(clusters_and_noise)
-      #  print('input shape: ', embedded_input.shape)
         embedded_input = self.positional_encoding(embedded_input)
-       # print('input shape: ', embedded_input.shape)
         
         # Preparing the causal mask
-        src_mask = torch.nn.Transformer.generate_square_subsequent_mask(
-            embedded_input.size(1)).to(embedded_input.device)
-       # print('src mask shape', src_mask.shape)
+       # src_mask = torch.nn.Transformer.generate_square_subsequent_mask(
+        #    embedded_input.size(1)).to(embedded_input.device)
 
         # Passing through the transformer encoder
-        embedded_output = self.transformer_encoder(embedded_input, mask=src_mask, is_causal=True)
-      #  print('output shape: ', embedded_output.shape)
+       # embedded_output = self.transformer_encoder(embedded_input, mask=src_mask, is_causal=True)
+        embedded_output = self.transformer_encoder(embedded_input)
         # The first 3 dimensions are phase space random variables, the rest are hadron IDs  
         output = self.output_embedding_layer(embedded_output)
-
-      #  print(output.shape)
         # sys.exit()
         
         # Clamp values to avoid numerical instability
         output = torch.clamp(output, min=-1e6, max=1e6)
-        # print('space phase dim:', self.space_phase_dim)
-        # print('gumbel softmax', self.gumbel_softmax_hard)
-        # print('gumbel softmax output', output[:, :, self.space_phase_dim:].shape)
-        # print(output[0])
         # Applying Gumbel-Softmax to the hadron IDs
         output[:, :, self.space_phase_dim:] = torch.nn.functional.gumbel_softmax(
             output[:, :, self.space_phase_dim:],
@@ -116,56 +105,45 @@ class Generator(torch.nn.Module):
             hard=self.gumbel_softmax_hard
         )
 
-        # print('after gumbel softmax: ', output.shape)
-        # sys.exit()
+        #print('epoch: ', self.current_gumbel_temp)
+
         # The padding token is the one with the first dimension equal to 1.0
         # We want to zero out the padding tokens in the output
+      #  print(output[:, :, self.space_phase_dim][0])
+      #  sys.exit()
         pad_mask = output[:, :, self.space_phase_dim] == 1.0
-       # print('pad mask:', pad_mask[0])
-        #sys.exit()
-        pure_padding = torch.zeros_like(output[pad_mask])
-        pure_padding[:, self.space_phase_dim] = 1.0
-        output[pad_mask] = pure_padding
+        pad_mask_expanded = pad_mask.unsqueeze(-1).expand_as(output)
+
+
+        # Create the pure padding template
+        pure_padding_template = torch.zeros_like(output)
+        pure_padding_template[:, :, self.space_phase_dim] = 1.0
+
+        # Replace using torch.where (preserves gradients!)
+        output = torch.where(pad_mask_expanded, pure_padding_template, output)
+       # print('after zeroing padding: ', output[:, :, self.space_phase_dim][0])
 
         # Moving all padding tokens to end of each sequence, keep relative order of the rest
         pad_indicator = pad_mask.to(torch.int64)    # 1 for pad, 0 otherwise
         order = torch.argsort(pad_indicator, dim=1) # non‐pads (0) come first
         output = torch.gather(output, dim=1, index=order.unsqueeze(2).expand(-1, -1, output.size(2)))
-        mass_table = self.mass_tensor.to(output.device)
-        
-       # print(self.mass_tensor)
 
-
-        ####
-      #  start = time.time()
-        hadron_ids = output[:, :, self.space_phase_dim+1:]
-        hadron_ids = torch.argmax(hadron_ids, dim=2)
-        #pids = torch.tensor([[self.pid_map[hadron_id.item()] for hadron_id in seq] for seq in hadron_ids])
-        #masses = torch.tensor([[Particle.from_pdgid(pid).mass / 1000 for pid in seq] for seq in pids], device=output.device)
-        # masses = torch.tensor([[Particle.from_pdgid(self.pid_map[hadron_id.item()]).mass / 1000 
-        #                         for hadron_id in seq] 
-        #                        for seq in hadron_ids], device=output.device)
-
-        hadron_logits = output[:, :, self.space_phase_dim+1:]  # [B, N, 3]
-       # probs = torch.softmax(hadron_logits, dim=-1)   # [B, N, 3]
-       # masses = probs @ mass_table                    # [B, N]
-        hadron_ids = torch.argmax(hadron_logits, dim=-1)   # [B, N]
-        masses = mass_table[hadron_ids]                    # [B, N]
-       # probs = torch.nn.functional.gumbel_softmax(hadron_logits, tau=1.0, hard=True)  # [B, N, 3]
-       # masses = probs @ mass_table                    # [B, N]
-
-        #print('masses shape:', masses[:2])
-       # print('probs: ', probs[0:2])
-        #sys.exit()
-        #print()
+        # new pad_mask after reordering    
         pad_mask = output[:, :, self.space_phase_dim] == 1.0
-                               
-        masses[pad_mask] = 0.0
+
+        mass_table = self.mass_tensor.to(output.device)
+        hadron_logits = output[:, :, self.space_phase_dim+1:]  # [B, N, 3]
+        masses = hadron_logits @ mass_table                    # [B, N]
+
+        all_paddings = pad_mask.all(dim=1)
+        # Convert boolean to float for differentiable operations
+        pad_mask_float = (~pad_mask).float()  # Invert: 1 for real, 0 for padding
+
+        # Multiply instead of assign (preserves gradients)
+        masses = masses * pad_mask_float  # padding -> 0, real -> keeps value
         momenta_3 = output[:, :, :3]
 
-        #print(masses[0])
-        #sys.exit()
-        
+
         # compute 3 momenta magnitudes
         momenta_mag = torch.norm(momenta_3, dim=2)  # (B, S)
         eps = 1e-12
@@ -175,41 +153,19 @@ class Generator(torch.nn.Module):
 
         # rest_frame boost
         momenta_4_rest_frame = vectorized_boost(momenta_4, total_4_momenta, inverse=False)
-        momenta_4_rest_frame = momenta_4_rest_frame * (~pad_mask.unsqueeze(2))  # zero out padding particles
+        momenta_4_rest_frame = momenta_4_rest_frame * (pad_mask_float.unsqueeze(2))  # zero out padding particles
         momenta_3_rest_frame = momenta_4_rest_frame[:, :, 1:]
         
         momenta_mag_rest_frame = torch.norm(momenta_3_rest_frame, dim=2)  # (B, S)
         cluster_invariant_masses = get_invariant_mass(cluster_kins[:, 0, :4].reshape(-1, 4))
-        # print('momenta mag rest frame shape:', momenta_mag_rest_frame.shape)
-        # print('cluster invariant masses:', cluster_invariant_masses.shape)
-        # print('masses shape:', masses.shape)
-        # np.save('debug_momenta_mag_rest_frame.npy', momenta_mag_rest_frame.cpu().detach().numpy())
-        # np.save('debug_cluster_invariant_masses.npy', cluster_invariant_masses.cpu().detach().numpy())
-        # np.save('debug_masses.npy', masses.cpu().detach().numpy())
-        # # save pad_mask
-        # np.save('debug_pad_mask.npy', pad_mask.cpu().detach().numpy())
 
-
-        xi, valid = solve_xi(momenta_mag_rest_frame, masses, cluster_invariant_masses, ~pad_mask, n_iter=12)
-        
-        # if torch.isnan(xi).any():
-        #     print('NaNs detected in xi')
-        #     index = torch.isnan(xi)
-        #     print('xi', xi[index])
-        #     print('momenta mag rest frame', momenta_mag_rest_frame[index])
-        #     print('masses', masses[index])
-        #     print('cluster invariant masses', cluster_invariant_masses[index])
-        #     print('output', output[index])
-        #     sys.exit()
-
-
-       # print('solved xi shape:', xi.shape)
-
-        # (B,1,1) so broadcasting works for (B,N,3)
+        xi, valid, violation = solve_xi(momenta_mag_rest_frame, masses, cluster_invariant_masses, ~pad_mask, n_iter=12)
         xi = xi.unsqueeze(1).unsqueeze(2)
 
         # Scale momenta
         rescaled_momenta_3_rest_frame = momenta_3_rest_frame * xi          # (B,N,3)
+
+
 
         # Compute energies correctly: E_i = sqrt(px^2+py^2+pz^2 + m_i^2)
         p2 = (rescaled_momenta_3_rest_frame**2).sum(dim=2)                  # (B,N)
@@ -223,41 +179,57 @@ class Generator(torch.nn.Module):
         # if valid == False, set to zero
         rescaled_4_momenta_rest_frame[~valid] = 0.0
         cluster_4_momenta = cluster_kins[:,0,:4]
-        # if torch.isnan(rescaled_4_momenta_rest_frame).any():
-        #     print('NaNs detected in rescaled 4-momenta rest frame')
-        #     sys.exit()
-        # boost out of cluster rest frame
+
         boosted_4_momenta = vectorized_boost(rescaled_4_momenta_rest_frame, 
                                              cluster_4_momenta, inverse=True)
     
         
       #  print('pad_mask shape', pad_mask.shape)
-        boosted_4_momenta = boosted_4_momenta * (~pad_mask.unsqueeze(2))  # zero out padding particles
+        boosted_4_momenta = boosted_4_momenta * pad_mask_float.unsqueeze(2)  # zero out padding particles
 
         # find the nans in boosted_4_momenta
+        # shape N, 32, 8
+        new_output = torch.cat(
+            (boosted_4_momenta, output[:, :, self.space_phase_dim:]), dim=2
+        )
+        all_paddings = all_paddings.view(-1,1,1)
 
-        #boosted_4_momenta[~valid] = 0.0
-        #print
-        all_padded = (~pad_mask).all(dim=1)
 
-        #print(output[:, :, self.space_phase_dim:].shape)
-        #print('boosted 4-momenta shape:', boosted_4_momenta.shape)
-        new_output = torch.cat((boosted_4_momenta, output[:, :, self.space_phase_dim:]), dim=2)   
-        new_output[all_padded] = torch.nan_to_num(new_output[all_padded], nan=0.0)     
-     #   print('boosted 4-momenta shape:', boosted_4_momenta[0])
-     #   print('output dims', output[:, :, self.space_phase_dim:])
-        # check if new_output is nans
+        new_output = torch.where(all_paddings, 
+                         torch.zeros_like(new_output), 
+                         new_output)
+        #new_output[all_paddings] = torch.nan_to_num(new_output[all_paddings], nan=0.0)
+
         if torch.isnan(new_output).any():
             print('NaNs detected in output')
-            sys.exit()
-        
-        #print('output shape:', new_output.shape)
-        #print(new_output[0])
+            # find which batch entries have nans
+            nan_batches = torch.isnan(new_output).any(dim=(1,2)).nonzero(as_tuple=True)[0]
 
-        #end = time.time()
-       # print('time taken:', end - start)
-       # sys.exit()
-        return new_output
+            # print the nan entries
+            for batch_idx in nan_batches:
+                print(f'NaNs in batch entry {batch_idx}:')
+                print(new_output[batch_idx])
+
+
+            sys.exit()
+
+
+
+
+
+        padding_token = output[:,:, self.space_phase_dim]
+        total_paddings = torch.sum(padding_token, dim=1)
+        seq_length = padding_token.size(1)
+        total_particles = seq_length - total_paddings
+        # constrain relu on total_particles to be at least 2 particles
+        non_pad_loss = torch.nn.ReLU()(2.0 - total_particles)
+
+        is_odd = (total_particles % 2).float()  # 0 for even, 1 for odd
+        #odd_penalty = torch.mean(is_odd)
+        
+     
+
+        return new_output, violation**2, non_pad_loss**2, is_odd
         # print('boosted 4-momenta shape:', boosted_4_momenta.shape)
         # print('boosted 4-momenta shape:', boosted_4_momenta[0])
        # print('total 4-momenta shape:', total_4_momenta.shape)
@@ -422,9 +394,11 @@ class Discriminator(torch.nn.Module):
         embedded_input = self.positional_encoding(embedded_input)
         
         # Preparing the causal mask
-        src_mask = torch.nn.Transformer.generate_square_subsequent_mask(
-            embedded_input.size(1)).to(embedded_input.device)
+        # src_mask = torch.nn.Transformer.generate_square_subsequent_mask(
+        #     embedded_input.size(1)).to(embedded_input.device)
         
-        embedded_output = self.transformer_encoder(embedded_input, mask=src_mask, is_causal=True)
+        # embedded_output = self.transformer_encoder(embedded_input, mask=src_mask, is_causal=True)
+        embedded_output = self.transformer_encoder(embedded_input)
+
         real_or_fake_response = self.output_embedding_layer(embedded_output)
         return real_or_fake_response.mean(dim=1)

@@ -20,6 +20,13 @@ def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
     # event-level kinematic validity
     mass_sum = (m * mask).sum(dim=1)
     valid = mass_sum <= M    # (B,)
+    # relu on valid 
+    violation = torch.nn.functional.relu(-M + mass_sum)
+    # mass > M
+
+
+
+    #xi = torch.ones_like(M) # output
     xi = torch.zeros_like(M) # output
 
     if not valid.any():
@@ -33,7 +40,7 @@ def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
     M_v   = M[valid]
     mask_v = mask[valid]
 
-    denom = (p_v.abs() * mask_v).sum(dim=1)
+    denom = (p_v.abs() * mask_v).sum(dim=1).clamp_min(1e-8)
     xi_v = (M_v / denom).clamp_min(1e-8)
    # print(f'xi_v: {xi_v}')
     # Newton iterations
@@ -49,10 +56,10 @@ def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
 
         # df/dxi = Σ xi*p^2 / (E_i)   (masked)
         dE_dxi = (xi_v[:,None] * p2_v / E_i.clamp_min(eps)) * mask_v
-        f_prime = dE_dxi.sum(dim=1).clamp_min(1e-10)
+        f_prime = dE_dxi.sum(dim=1).clamp_min(1e-8)
 
         xi_v = (xi_v - f/f_prime).clamp_min(0.0)
 
     # insert results back
     xi[valid] = xi_v
-    return xi, valid
+    return xi, valid, violation

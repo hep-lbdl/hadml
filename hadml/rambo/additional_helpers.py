@@ -1,8 +1,6 @@
 import torch
 
 
-import torch
-
 def vectorized_boost(momenta_4, total_4_momenta, inverse=False):
     k = momenta_4
     P = total_4_momenta
@@ -11,9 +9,16 @@ def vectorized_boost(momenta_4, total_4_momenta, inverse=False):
     p_vec = P[:, 1:]
 
     beta = p_vec / E.unsqueeze(1)              # (B,3)
-    beta2 = (beta ** 2).sum(dim=1)             # (B,)
+    beta2 = (beta ** 2).sum(dim=1)
+    
+    # if (beta2 == 1).any():
+    #     print(" WARNING: beta2 >= 1 detected!")
+    #     problematic_indices = torch.where(beta2 == 1)[0]
+    #     for idx in problematic_indices[:5]:  # Show first 5
+    #         print(f"    Index {idx}: E={E[idx].item():.6f}, |p|={p_vec[idx].norm().item():.6f}, beta2={beta2[idx].item():.6f}")
+    
+                 # (B,)
     gamma = 1.0 / torch.sqrt(1 - beta2)        # (B,)
-
     if inverse:
         beta = -beta
 
@@ -30,6 +35,8 @@ def vectorized_boost(momenta_4, total_4_momenta, inverse=False):
 
     k0_new = gamma * (k0 - beta_dot_k)
 
+
+   # print(gamma * k0 * beta)
     kvec_new = (
         kvec
         + gm1_over_beta2 * beta_dot_k * beta   # uses stable formula

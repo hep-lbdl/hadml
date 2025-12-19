@@ -9,7 +9,7 @@ from collections import Counter
 import numpy as np, matplotlib.pyplot as plt
 from torch.nn.attention import SDPBackend, sdpa_kernel
 import ot, os, pickle
-
+import sys
 
 class MultiHadronEventGANModule(LightningModule):
     def __init__(
@@ -24,7 +24,10 @@ class MultiHadronEventGANModule(LightningModule):
         r1_reg: float,
         target_gumbel_temp: float = 0.3,
         gumbel_softmax_hard: bool = False,
-        deviation_coeff: float = 0.0
+        deviation_coeff: float = 0.0,
+        violation_loss_coeff: float = 0.0,
+        non_pad_loss_coeff: float = 0.0,
+        is_odd_loss: float = 0.0,
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["generator", "discriminator"])
@@ -55,6 +58,7 @@ class MultiHadronEventGANModule(LightningModule):
         self.generator.current_gumbel_temp = self.current_gumbel_temp
         self.generator.gumbel_softmax_hard = self.hparams.gumbel_softmax_hard
         generated_hadrons = self.generator(noise.to(clusters.device), clusters)
+
         return generated_hadrons
     
     def setup(self, stage=None):
@@ -63,11 +67,14 @@ class MultiHadronEventGANModule(LightningModule):
     def training_step(self, batch, batch_idx, optimizer_idx):
         # Updating the Gumbel Softmax temperature
         self._update_gumbel_temp()
+
         
         gen_input, real_hadrons = batch
-        fake_hadrons = self(gen_input)
 
-        # Check for NaN values in fake_hadrons
+       # print(gen_input[:,0,:4])
+       # sys.exit()
+        fake_hadrons, violation, non_pad_loss, is_odd = self(gen_input)
+
         if torch.isnan(fake_hadrons).any():
             raise ValueError("NaN detected in fake_hadrons")
 
@@ -79,10 +86,20 @@ class MultiHadronEventGANModule(LightningModule):
 
         if optimizer_idx == 0:
             # Training the generator
-            generator_loss = self._generator_loss(score_for_fake)
+            violation_loss = self.hparams.violation_loss_coeff*violation.mean()
+            non_pad_loss = self.hparams.non_pad_loss_coeff*non_pad_loss.mean()
+            is_odd_loss = self.hparams.is_odd_loss*is_odd.mean()
+            generator_loss = self._generator_loss(score_for_fake) + violation_loss + non_pad_loss + is_odd_loss
             self.train_gen_loss(generator_loss)
             self.log("generator_loss", generator_loss, prog_bar=True)
+            if self.hparams.violation_loss_coeff > 0:
+                self.log("violation_loss", violation_loss, prog_bar=True)
+            if self.hparams.non_pad_loss_coeff > 0:
+                self.log("non_pad_loss", non_pad_loss, prog_bar=True)
+            if self.hparams.is_odd_loss > 0:
+                self.log("is_odd_loss", is_odd_loss, prog_bar=True)
             loss = generator_loss
+          #  print(non_pad_loss)
         
         else:
             # Training the discriminator
@@ -130,7 +147,7 @@ class MultiHadronEventGANModule(LightningModule):
         gen_input, real_hadrons = batch
 
         if self.trainer.state.stage == "validate":
-            fake_hadrons = self(gen_input)
+            fake_hadrons, _, _, _ = self(gen_input)
             swd_shape = fake_hadrons.shape
             
             # Wasserstein (reshaping: [batch_size * seq_len, features])
@@ -187,11 +204,61 @@ class MultiHadronEventGANModule(LightningModule):
     def _generate_noise(self, batch_size, n_tokens):
         return torch.randn(batch_size, n_tokens, self.hparams.noise_dim)
     
+    # def _update_gumbel_temp(self):
+    #     progress = self.trainer.global_step / self.trainer.max_steps
+    #     progress = 1 - (1 - progress)**2
+    #     self.current_gumbel_temp = 1.0 - (1 - self.hparams.target_gumbel_temp) * progress
+    #     self.log("gumbel", self.current_gumbel_temp)
+       # print(print(f"progress: {progress}, max_steps: {self.trainer.max_steps}"))
+
     def _update_gumbel_temp(self):
-        progress = self.trainer.global_step / self.trainer.max_steps
+        """
+        Update Gumbel temperature with annealing schedule.
+        Handles cases where max_steps = -1 (epoch-based training) gracefully.
+        """
+        # Safely calculate progress based on available training limits
+        progress = 0.0
+        
+        # Option 1: Use epoch-based progress if training by epochs
+        if hasattr(self.trainer, 'max_epochs') and self.trainer.max_epochs > 0:
+            current_epoch = getattr(self.trainer, 'current_epoch', 0)
+            progress = current_epoch / self.trainer.max_epochs
+        # Option 2: Use step-based progress if max_steps is valid
+        elif hasattr(self.trainer, 'max_steps') and self.trainer.max_steps > 0:
+            progress = self.trainer.global_step / self.trainer.max_steps
+        # Option 3: Use step count with default max_steps if needed
+        else:
+            # Default to 10,000 steps if no max_steps specified
+            default_max_steps = 10000
+            progress = self.trainer.global_step / default_max_steps
+        
+        # Clamp progress to [0, 1] range - CRITICAL FIX!
+        progress = max(0.0, min(1.0, progress))
+        
+        # Apply your transformation (optional)
+        # This makes temperature decay slower initially, faster later
         progress = 1 - (1 - progress)**2
-        self.current_gumbel_temp = 1.0 - (1 - self.hparams.target_gumbel_temp) * progress
-        self.log("gumbel", self.current_gumbel_temp)
+        
+        # Ensure target temperature is within valid range
+        target_temp = float(self.hparams.target_gumbel_temp)
+        target_temp = max(0.01, min(1.0, target_temp))  # Ensure target is reasonable
+        
+        # Calculate current temperature (decreasing from 1.0 to target)
+        self.current_gumbel_temp = 1.0 - (1.0 - target_temp) * progress
+        
+        # ENFORCE HARD BOUNDS - prevents temperature > 100
+        self.current_gumbel_temp = max(0.01, min(2.0, self.current_gumbel_temp))
+        
+        # Log for monitoring
+        self.log("gumbel_temp", self.current_gumbel_temp, prog_bar=True)
+    
+    # # Optional: Debug logging (disable in production)
+    # if self.trainer.global_step % 100 == 0:
+    #     self.log_dict({
+    #         "gumbel_progress": progress,
+    #         "gumbel_target": target_temp,
+    #     })
+
 
     def _compare(self, predictions, truths):
         images = self._prepare_plots(predictions, truths)

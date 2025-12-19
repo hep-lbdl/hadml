@@ -21,24 +21,62 @@ tags: ["herwig", "MultiHadronEvents"]
 train: True
 test: False
 
+datamodule:
+  batch_size: 256
+
 # Logger
 logger:
   wandb:
     # Specify the name of your W&B project and team
-    entity: "hadronisation-transformer"
-    project: "ramboEncoder-sweeps"
+    entity: "rd804"
+    project: "hadml"
     tags: ["herwig", "MultiHadronEvents", "rambo"]
 
 # Trainer
 trainer:
-  max_epochs: 8
+  max_epochs: 100
 
+  #datamodule:
+
+  #enable_progress_bar: false
   # Sanity check and validation frequency
   num_sanity_val_steps: -1
   check_val_every_n_epoch: 1
   
   # Configuration for multiple GPUs (DDP strategy)
-  accelerator: cpu
+  accelerator: gpu
 
   # If you have a small training data set, set the below line to 1
   log_every_n_steps: 10
+
+#callbacks:
+ # - class_path: pytorch_lightning.callbacks.progress.TQDMProgressBar
+model:
+  noise_dim : 16
+  loss_type : "bce"
+  r1_reg : 0.0
+  #target_gumbel_temp : 0.2619949252819753
+  target_gumbel_temp : 0.1
+  violation_loss_coeff : 10.0
+  non_pad_loss_coeff: 10.0
+  is_odd_loss : 0.0
+
+  gumbel_softmax_hard : True
+
+  optimizer_generator:
+    lr : 0.001
+  optimizer_discriminator:
+    lr : 0.001
+
+
+  generator:
+    dim_feedforward : 256
+    n_heads : 2
+    num_layers : 2
+
+  discriminator:
+    dim_feedforward : 256
+    n_heads : 2
+    num_layers : 2
+  
+
