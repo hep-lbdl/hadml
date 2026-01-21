@@ -206,7 +206,7 @@ def train_wandb(cfg: DictConfig) -> None:
 
 @hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> None:
-    if cfg.get("hyperparameter-search"):
+    if cfg.get("hyperparameter_search"):
         sweep(cfg)
     else:
         start(cfg)
