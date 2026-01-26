@@ -173,7 +173,7 @@ def sweep(cfg: DictConfig) -> Optional[float]:
                                project=cfg.logger.wandb.project)
         print(f"Sweep ID: {sweep_id}")
     else:
-        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=1,
+        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=cfg.get("run_count", 1),
                     entity=cfg.logger.wandb.entity, project=cfg.logger.wandb.project)
     return None
 
