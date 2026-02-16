@@ -150,30 +150,30 @@ def sweep(cfg: DictConfig) -> Optional[float]:
 
     if init_sweep:
         sweep_configuration = {
-            "method": "bayes",  # Another option is 'grid' requiring discrete values for all parameters
+            "method": "grid",
             "metric": {"goal": "minimize", "name": "val/swd_hadron_multiplicity"},
             "parameters": {
                 # General training hyperparameters
-                "r1_reg": {"values": [0, 3_000, 10_000]},
-                "batch_size": {"values": [32, 64, 128, 512]},
+                "r1_reg": {"values": [0, 3_000]},
+                "batch_size": {"values": [128, 256]},
                 "noise_dim": {"values": [8, 16, 24]},
                 "loss_type": {"values": ["bce"]},
-                "target_gumbel_temp": {"max": 0.5, "min": 0.1, "distribution": "log_uniform_values"},
+                "target_gumbel_temp": {"values": [0.5, 0.1]},
                 
                 # Optimizer hyperparameters
-                "lr": {"values": [0.05, 0.01, 0.001, 0.0001]},
+                "lr": {"values": [0.001, 0.0001, 0.00001]},
 
                 # Generator and discriminator hyperparameters
-                "num_layers": {"values": [2, 3, 4]},
-                "dim_feedforward": {"values": [64, 128, 256]},
-                "n_heads": {"values": [2, 3, 4]},
+                "num_layers": {"values": [2, 4]},
+                "dim_feedforward": {"values": [128, 256]},
+                "n_heads": {"values": [2, 4]},
             }
         }
         sweep_id = wandb.sweep(sweep=sweep_configuration, entity=cfg.logger.wandb.entity,
                                project=cfg.logger.wandb.project)
         print(f"Sweep ID: {sweep_id}")
     else:
-        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=1,
+        wandb.agent(cfg.sweep_id, function=lambda: train_wandb(cfg), count=cfg.get("run_count", 1),
                     entity=cfg.logger.wandb.entity, project=cfg.logger.wandb.project)
     return None
 
@@ -206,7 +206,7 @@ def train_wandb(cfg: DictConfig) -> None:
 
 @hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> None:
-    if cfg.get("hyperparameter-search"):
+    if cfg.get("hyperparameter_search"):
         sweep(cfg)
     else:
         start(cfg)

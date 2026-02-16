@@ -1,15 +1,25 @@
 _target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
 # Basic parameters
+<<<<<<< HEAD
 batch_size: 32
 train_val_test_split: [0.8, 0.199, 0.001]
 
 # Parallel loading
 num_workers: 4  # You need to write the number of CPUs of your machine
+=======
+batch_size: 128   # Smaller batch size leads to much longer training time
+train_val_test_split: [0.8, 0.1, 0.1]
+
+# Parallel loading
+num_workers: 16   # You need to write the number of CPUs of your machine
+>>>>>>> 4c837e6d0a98451fb29f08c17f3390d47340c61d
                   # Example 1: running on Intel Core i5 having 
-                  #   1 socket x 4 physical cores x 2 threads = 8
+                  #   1 socket x 4 physical cores x 2 threads --> 8
                   # Example 2: running on a Perlmutter (NERSC) GPU node
-                  #   1 x AMD EPYC™ 7763 (CPU) = 64 cores x 2 threads = 128
+                  #   1 x AMD EPYC™ 7763 (CPU) = 64 cores x 2 threads --> 128
+                  # Example 3: running on a Perlmutter (NERSC) GPU node
+                  #   with 4 GPUs as 4 tasks in parallel --> 16
 
 # Number of hadron types to be taken into account (e.g. 10 most common PIDs)
 #n_hadron_types: 300
