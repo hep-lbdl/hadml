@@ -1,15 +1,25 @@
 import torch
 
 
-def vectorized_boost(momenta_4, total_4_momenta, inverse=False):
+def vectorized_boost(momenta_4, total_4_momenta, inverse=False, print_warnings=False):
     k = momenta_4
     P = total_4_momenta
 
     E = P[:, 0]
     p_vec = P[:, 1:]
 
+    if print_warnings:
+        print(" In vectorized_boost:")
+        print("  E:", E.shape)
+        print("  |p|:", p_vec.shape)
+
+
     beta = p_vec / E.unsqueeze(1)              # (B,3)
     beta2 = (beta ** 2).sum(dim=1)
+
+    if print_warnings:
+        print("  beta2:", beta2.shape)
+        print(" beta:", beta.shape)
     
     # if (beta2 == 1).any():
     #     print(" WARNING: beta2 >= 1 detected!")
@@ -19,21 +29,32 @@ def vectorized_boost(momenta_4, total_4_momenta, inverse=False):
     
                  # (B,)
     gamma = 1.0 / torch.sqrt(1 - beta2)        # (B,)
+
+    if print_warnings:
+        print(" gamma:", gamma.shape)
+
     if inverse:
         beta = -beta
 
     beta  = beta[:, None, :]                   # (B,1,3)
     gamma = gamma[:, None, None]               # (B,1,1)
 
-    # Stable expression: (γ−1)/β² = 1/(1+γ)
-    gm1_over_beta2 = 1.0 / (1.0 + gamma)       # (B,1,1)
+    # Stable expression: (γ−1)/β² = γ^2/(1+γ)
+    gm1_over_beta2 = gamma**2 / (1.0 + gamma)       # (B,1,1)
 
     k0   = k[:, :, 0:1]
     kvec = k[:, :, 1:]
 
-    beta_dot_k = (beta * kvec).sum(dim=2, keepdim=True)
+    if print_warnings:
+        print(" k0:", k0.shape)
+        print(" kvec:", kvec.shape)
 
+    beta_dot_k = (beta * kvec).sum(dim=2, keepdim=True)
     k0_new = gamma * (k0 - beta_dot_k)
+
+    if print_warnings:
+        print(" beta_dot_k:", beta_dot_k.shape)
+        print(" k0_new:", k0_new.shape)
 
 
    # print(gamma * k0 * beta)

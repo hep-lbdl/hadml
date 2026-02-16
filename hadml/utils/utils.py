@@ -273,6 +273,44 @@ def get_r1_grad_penalty(
 
     return gradient_penalty
 
+def get_r1_grad_penalty_2(
+    D: nn.Module,
+    real_inputs: torch.Tensor,
+    real_inputs_rem: torch.Tensor
+):
+    """
+    R1 gradient penalty ONLY wrt real_inputs.
+    """
+
+    # R1 must differentiate only wrt data
+    real_inputs = real_inputs.requires_grad_(True)
+
+    # critical: prevent gradient path
+    real_inputs_rem = real_inputs_rem.detach()
+
+    # discriminator forward
+    score, _ = D(real_inputs, real_inputs_rem)
+
+    # sum over batch to get scalar
+    grad = torch.autograd.grad(
+        outputs=score.sum(),
+        inputs=real_inputs,
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True
+    )[0]
+
+    # standard R1 penalty
+    grad = grad.view(grad.size(0), -1)
+    gradient_penalty = (grad.pow(2).sum(1)).mean()
+
+    return gradient_penalty
+
+
+
+
+
+
 
 def conditional_cat(optional: Optional[Tensor], x: Tensor, dim=1):
     if optional is None:
@@ -283,3 +321,147 @@ def conditional_cat(optional: Optional[Tensor], x: Tensor, dim=1):
 def get_one_hot(targets, nb_classes):
     res = np.eye(nb_classes)[targets.reshape(-1)]
     return res.reshape(list(targets.shape) + [nb_classes])
+
+
+import torch
+
+
+
+def safe_atan2(y, x, eps=1e-12):
+    """
+    Safe atan2 with custom gradient to avoid NaN when x=y=0
+    """
+    # Forward pass: normal atan2
+    result = torch.atan2(y, x)
+    
+    # For backward pass, we need to handle x=0, y=0 case
+    # We'll use a custom backward function
+    class SafeAtan2(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, y, x):
+            ctx.save_for_backward(y, x)
+            return torch.atan2(y, x)
+        
+        @staticmethod
+        def backward(ctx, grad_output):
+            y, x = ctx.saved_tensors
+            # Normal gradient for atan2: d/dx = -y/(x^2 + y^2)
+            #                      d/dy = x/(x^2 + y^2)
+            denom = x**2 + y**2 + eps
+            grad_x = -y / denom * grad_output
+            grad_y = x / denom * grad_output
+            
+            # When both x and y are near zero, set gradient to 0
+            small_mask = (x.abs() < eps) & (y.abs() < eps)
+            if small_mask.any():
+                grad_x = torch.where(small_mask, torch.zeros_like(grad_x), grad_x)
+                grad_y = torch.where(small_mask, torch.zeros_like(grad_y), grad_y)
+                
+            return grad_y, grad_x
+    
+    return SafeAtan2.apply(y, x)
+
+
+def lorentz_to_kt_eta_phi_m(p: torch.Tensor, eps: float = 1e-12):
+    E  = p[..., 0]
+    px = p[..., 1]
+    py = p[..., 2]
+    pz = p[..., 3]
+
+    # ---- transverse momentum ----
+    pt = torch.sqrt(px**2 + py**2 + eps)
+
+    # ---- azimuth using safe_atan2 ----
+    phi = safe_atan2(py, px, eps=1e-12)
+
+    # ---- invariant mass ----
+    mass2 = E**2 - (px**2 + py**2 + pz**2)
+    m = torch.sqrt(torch.clamp(mass2, min=eps))
+
+    # ---- |p| ----
+    p_mag = torch.sqrt(px**2 + py**2 + pz**2 + eps)
+
+    # ---- pseudorapidity ----
+    ratio = torch.clamp(pz / (p_mag + eps), min=-0.999999, max=0.999999)
+    eta = torch.atanh(ratio)
+
+    return torch.stack((pt, eta, phi, m), dim=-1)
+
+
+
+
+
+
+import os
+import pickle
+from particle import Particle
+
+
+def pid_map(pid_map_filepath: str = None):
+    """Load PID map from file and return a dictionary mapping PID to index."""
+    with open(os.path.normpath(pid_map_filepath), "rb") as f:
+        raw_pid_map = pickle.load(f)             # {pid: index}
+
+
+    pid_map = {idx: (0.0 if pid == 'uncommon_pid' else float(pid))
+            for pid, idx in raw_pid_map.items()}
+    # check if uncommon_pid is in pid_map
+    find_pid = False
+    for pid in pid_map.values():
+        if pid == 0.0:
+            find_pid = True
+    print('----------------------------')
+    print('----------------------------')
+    print('Uncommon PID found in pid_map:', find_pid)
+
+    # Masses in GeV.  (Negative PDG IDs = antiparticles -> same mass.)
+    manual_mass_map = {5212.0: 5.8112082, 5214.0: 5.8325324, 
+                        5314.0: 5.967868, 5322.0: 5.897625, 
+                        10511.0: 5.726344, 10513.0: 5.7207456, 
+                        10521.0: 5.726035, 10523.0: 5.720276, 
+                        10531.0: 5.8176956, 10533.0: 5.8293395, 
+                        13322.0: 1.689997, 15122.0: 5.912, 15322.0: 6.1110806, 
+                        20413.0: 2.4376314, 20513.0: 5.7615266, 
+                        20523.0: 5.762014, 20533.0: 5.829, 
+                        100311.0: 1.4600005, 100321.0: 1.4595373,
+                        545: 7.35, 5312: 5.96, 5324: 5.97, 5334: 6.13,
+                        10541: 7.25, 10543: 7.3, 
+                        13312: 1.69, 14312: 2.79, 14322: 2.79, 23312: 1.96, 23322: 1.96,
+                        15312.0: 6.11}
+    # manual_mass_map = {5212.0: 5.8112082}
+    # what is the mass of 15312 ? 
+
+
+    masses = []
+    not_found = []
+
+    for pid in pid_map.values():
+        if pid == 0.0:
+            masses.append(0.0)
+            continue
+
+        pid_int = abs(float(pid))
+        
+        # Check manual overrides first
+        if pid_int in manual_mass_map:
+            masses.append(manual_mass_map[pid_int])
+            continue
+        
+        pid_int = int(pid)
+        # Otherwise try PDG lookup
+        try:
+            m = Particle.from_pdgid(pid_int).mass / 1000  # -> GeV
+            masses.append(m)
+        except Exception:
+            masses.append(0.0)
+            not_found.append(pid_int)
+
+    # Print summary of missing masses
+    if not_found:
+        print("masses not found for PIDs:", sorted(set(not_found)))
+        for pid_u in sorted(set(not_found)):
+            print("mass not found, set to 0 for PID:", pid_u)
+
+    return masses
+
+

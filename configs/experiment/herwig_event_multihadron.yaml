@@ -27,14 +27,17 @@ datamodule:
 # Logger
 logger:
   wandb:
-    # Specify the name of your W&B project and team
+#     # Specify the name of your W&B project and team
     entity: "rd804"
     project: "hadml"
     tags: ["herwig", "MultiHadronEvents", "rambo"]
+    group: "multihadron_test"
+    job_type: "1M_test"
+    name: "fixed_masses"
 
 # Trainer
 trainer:
-  max_epochs: 100
+  max_epochs: 1000
 
   #datamodule:
 
@@ -45,38 +48,42 @@ trainer:
   
   # Configuration for multiple GPUs (DDP strategy)
   accelerator: gpu
+  devices: [2]
 
-  # If you have a small training data set, set the below line to 1
-  log_every_n_steps: 10
+  # devices: [0,1,2]
+  # accelerator: gpu
+  # strategy: ddp
+  # # If you have a small training data set, set the below line to 1
+  # log_every_n_steps: 1
 
 #callbacks:
  # - class_path: pytorch_lightning.callbacks.progress.TQDMProgressBar
 model:
-  noise_dim : 16
+  noise_dim : 32
   loss_type : "bce"
-  r1_reg : 0.0
-  #target_gumbel_temp : 0.2619949252819753
-  target_gumbel_temp : 0.1
-  violation_loss_coeff : 10.0
-  non_pad_loss_coeff: 10.0
-  is_odd_loss : 0.0
+  r1_reg : 1.0
+  target_gumbel_temp : 0.4
+  violation_loss_coeff : 0.1
+  non_pad_loss_coeff: 0.5
+  entropy_coeff : 0.3
+  # is_odd_loss : 0.0
 
   gumbel_softmax_hard : True
 
   optimizer_generator:
-    lr : 0.001
+    lr : 1e-3
   optimizer_discriminator:
-    lr : 0.001
+    lr : 1e-4
 
 
   generator:
     dim_feedforward : 256
-    n_heads : 2
-    num_layers : 2
+    n_heads : 4
+    num_layers : 4
 
   discriminator:
     dim_feedforward : 256
-    n_heads : 2
+    n_heads : 4
     num_layers : 2
   
 

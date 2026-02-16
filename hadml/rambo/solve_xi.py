@@ -1,5 +1,5 @@
 import torch
-
+import sys
 
 def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
     """
@@ -22,15 +22,14 @@ def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
     valid = mass_sum <= M    # (B,)
     # relu on valid 
     violation = torch.nn.functional.relu(-M + mass_sum)
+    #print('violation:', violation.shape)
     # mass > M
 
 
-
-    #xi = torch.ones_like(M) # output
     xi = torch.zeros_like(M) # output
 
     if not valid.any():
-        return xi
+        return xi, valid, violation
 
     # work only on valid events
     p_v   = p[valid]
@@ -47,7 +46,6 @@ def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
     for _ in range(n_iter):
         # inside sqrt
         inside = xi_v[:,None]**2 * p2_v + m2_v
-        #inside = inside.clamp_min(eps)
 
         # masked energies
         E_i = torch.sqrt(torch.clamp(inside, min=eps)) * mask_v
@@ -62,4 +60,8 @@ def solve_xi(p, m, M, mask, n_iter=10, eps=1e-12):
 
     # insert results back
     xi[valid] = xi_v
+
+    #print('xi:', xi.shape)
+    #print('valid:', valid.shape)
+   # sys.exit()
     return xi, valid, violation

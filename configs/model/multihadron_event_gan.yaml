@@ -22,11 +22,11 @@ discriminator:
   dim_feedforward: 128
 
 optimizer_generator:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   _partial_: true
   lr: 0.01
 
 optimizer_discriminator:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   _partial_: true
   lr: 0.01
