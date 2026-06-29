@@ -166,3 +166,5 @@ slurm*.out
 
 # Temp shell scripts
 temp*.sh
+data/Herwig/event.png
+data/Herwig/README.md
