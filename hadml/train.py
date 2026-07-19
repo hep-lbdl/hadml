@@ -46,7 +46,6 @@ OmegaConf.register_new_resolver("sum", lambda x, y: x + y)
 OmegaConf.register_new_resolver("gen_list", lambda x, y: [x] * y)
 
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
-from pytorch_lightning.loggers import WandbLogger
 try:
     from pytorch_lightning.loggers import Logger as LightningLoggerBase
 except ImportError:
@@ -203,7 +202,7 @@ def train_wandb(cfg: DictConfig) -> None:
 
 @hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
 def main(cfg: DictConfig) -> None:
-    if cfg.get("hyperparameter-search"):
+    if cfg.get("hyperparameter_search"):
         sweep(cfg)
     else:
         start(cfg)
