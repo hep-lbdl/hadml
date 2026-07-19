@@ -288,10 +288,16 @@ class MultiHadronEventGANModule(LightningModule):
             preds_events = [event for batch in preds_batches for event in batch]      
             
             # Compute multiplicity stats safely using the unstacked event lists
-            sentence_stats["pred_n_hads_per_cluster"] = \
-                [len(d[d[:, self.hadron_kins_dim] == 0.0]) for d in preds_events]
+            if not self.hparams.gumbel_softmax_hard:
+                threshold = 0.5
+                sentence_stats["pred_n_hads_per_cluster"] = \
+                    [len(d[d[:, self.hadron_kins_dim] <= threshold]) for d in preds_events]
+            else:
+                sentence_stats["pred_n_hads_per_cluster"] = \
+                    [len(d[d[:, self.hadron_kins_dim] == 0.0]) for d in preds_events]
+            
             sentence_stats["pred_n_pad_hads_per_cluster"] = [len(preds_events[0]) - n for n in 
-                                                             sentence_stats["pred_n_hads_per_cluster"]]
+                                                                sentence_stats["pred_n_hads_per_cluster"]]
             
             sentence_stats["true_n_hads_per_cluster"] = \
                 [len(d[d[:, self.hadron_kins_dim] == 0.0]) for d in truths_events]
