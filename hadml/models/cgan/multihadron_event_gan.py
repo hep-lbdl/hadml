@@ -171,7 +171,7 @@ class MultiHadronEventGANModule(LightningModule):
                 if p.grad is not None:
                     p.grad = torch.nan_to_num(p.grad, nan=0.0, posinf=1.0, neginf=-1.0)
             
-        clip_val = getattr(self.hparams, 'gradient_clip_val', 10.0) 
+        clip_val = getattr(self.hparams, 'gradient_clip_val', 50.0) 
         total_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), clip_val)
         if total_norm > clip_val:
             logging.warning(f"Gradient norm {total_norm:.4f} exceeded clip value {clip_val}. Clipped.")

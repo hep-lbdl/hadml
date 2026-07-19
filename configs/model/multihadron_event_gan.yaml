@@ -2,7 +2,7 @@ _target_: hadml.models.cgan.multihadron_event_gan.MultiHadronEventGANModule
 noise_dim: 16
 loss_type: "bce"
 r1_reg: 1.0
-target_gumbel_temp: 1.0
+target_gumbel_temp: 100.0
 gumbel_softmax_hard: True
 deviation_coeff: 0.000
 
