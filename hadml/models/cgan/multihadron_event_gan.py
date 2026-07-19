@@ -471,8 +471,8 @@ class MultiHadronEventGANModule(LightningModule):
                 ax.set_ylabel("Hadrons", labelpad=12)
                 ax.legend(loc='upper right')
                 
-            fig.suptitle("Hadron Kinematics Distribution (Cluster Rest Frame).\n" + \
-                         "\"True\" defines the scale and limits.")
+            fig.suptitle("Hadron Kinematics Distribution\n" + \
+                         "(\"True\" defines the scale and limits)")
             diagrams["hadron_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
 
             # === Saving the hadron energy and momentum histogram to a file ====
