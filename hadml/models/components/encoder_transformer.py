@@ -9,7 +9,7 @@ class Generator(torch.nn.Module):
         noise_dim=8,            # Arbitrary number (noise dimensionality)
         cluster_data_dim=8,     # Cluster four-momentum, two quark types, phi, theta
         n_quarks=2,             # Number of quarks in cluster_data_dim
-        quark_types=16,         # Quark types: 0-16
+        quark_types=16,         # Quark types: 1-16 (16 types)
         hadron_kins_dim=4,      # Hadron four-momentum
         num_layers=2,           # Number of sub-encoder-layers in the encoder
         embedding_dim=128,      # Arbitrary number (but the same for the discriminator)

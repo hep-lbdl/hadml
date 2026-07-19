@@ -38,13 +38,16 @@ trainer:
 
   # Sanity check and validation frequency
   num_sanity_val_steps: -1
-  check_val_every_n_epoch: 1
-  
+  val_check_interval: 50
+
   # Configuration for multiple GPUs (DDP strategy)
   accelerator: gpu
   num_nodes: 1
-  devices: 4
-  strategy: "ddp"
+  devices: 1
+  # strategy: "ddp"
 
   # If you have a small training data set, set the below line to 1
-  # log_every_n_steps: 1
+  log_every_n_steps: 50
+
+  # Gradient clipping
+  gradient_clip_val: 1.0

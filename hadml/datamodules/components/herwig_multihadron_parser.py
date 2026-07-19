@@ -229,7 +229,6 @@ class HerwigMultiHadronEventParser():
         pids_to_idx = {pids: i for i, pids in enumerate(hadron_pids)}
         if self.n_hadron_types is not None:
             pids_to_idx["uncommon_pid"] = len(pids_to_idx)
-
         with open(self.pids_to_idx_path, "wb") as f:
             pickle.dump(pids_to_idx, f)
         print("The PID-to-MostCommonID map has been successfully saved in:",

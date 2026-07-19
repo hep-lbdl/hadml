@@ -273,6 +273,7 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         super().__init__()
 
         self.data_dir = data_dir
+        self.raw_processed_filename = processed_filename
         processed_path = os.path.join(os.path.normpath(data_dir), "processed")
         if not os.path.exists(processed_path):
             os.makedirs(processed_path)
@@ -325,11 +326,17 @@ class MultiHadronEventGANDataModule(LightningDataModule):
         cluster_labels = data.item()["cluster_labels"]
         n_events = len(cluster_kin)
         self.n_had_types = data.item()["n_had_type_indices"] + 1 # 1 extra type for a stop/padding token
-        hadron_kin_rest_frame = data.item()["had_kin_rest_frame"]
+
+        # Cluster rest frame kinematics:
+        # hadron_kin_rest_frame = data.item()["had_kin_rest_frame"]
 
         # Assigning hadrons to clusters 
         self.clusters, self.hadrons_with_types, n = self._get_hadrons_and_clusters__(
-            n_events, cluster_kin, cluster_labels, hadron_kin_rest_frame, had_type_indices)
+            n_events, 
+            cluster_kin, 
+            cluster_labels, 
+            hadron_kin,         # or hadron_kin_rest_frame, if needed 
+            had_type_indices)
         n_clusters_extracted_from_events = n
         n_hadrons_per_cluster = [len(hadron_seq.types) for hadron_seq in self.hadrons_with_types]
         self.max_n_hadrons = max(n_hadrons_per_cluster)
@@ -424,14 +431,14 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 hadron_kinematics = torch.cat(hadron_kinematics, dim=0)
                 cluster_kinematics = torch.stack(cluster_kinematics, dim=0)
                 training_kinematics_stats = {
-                    "hadron_momentum_mean" : hadron_kinematics[:, 1:4].mean().to(torch.float32),
-                    "hadron_momentum_std" : hadron_kinematics[:, 1:4].std().to(torch.float32),
-                    "hadron_energy_mean" : hadron_kinematics[:, 0].mean().to(torch.float32),
-                    "hadron_energy_std" : hadron_kinematics[:, 0].std().to(torch.float32),
-                    "cluster_momentum_mean" : cluster_kinematics[:, 1:4].mean().to(torch.float32),
-                    "cluster_momentum_std" : cluster_kinematics[:, 1:4].std().to(torch.float32),
-                    "cluster_energy_mean" : cluster_kinematics[:, 0].mean().to(torch.float32),
-                    "cluster_energy_std" : cluster_kinematics[:, 0].std().to(torch.float32),
+                    "hadron_momentum_mean" : torch.mean(hadron_kinematics[:, 1:4], 0).to(torch.float32),
+                    "hadron_momentum_std" : torch.std(hadron_kinematics[:, 1:4], 0).to(torch.float32),
+                    "hadron_energy_mean" : torch.mean(hadron_kinematics[:, 0], 0).to(torch.float32),
+                    "hadron_energy_std" : torch.std(hadron_kinematics[:, 0], 0).to(torch.float32),
+                    "cluster_momentum_mean" : torch.mean(cluster_kinematics[:, 1:4], 0).to(torch.float32),
+                    "cluster_momentum_std" : torch.std(cluster_kinematics[:, 1:4], 0).to(torch.float32),
+                    "cluster_energy_mean" : torch.mean(cluster_kinematics[:, 0], 0).to(torch.float32),
+                    "cluster_energy_std" : torch.std(cluster_kinematics[:, 0], 0).to(torch.float32),
                 }
                 with open(self.training_stats_filename, "wb") as f:
                     np.save(f, training_kinematics_stats)
@@ -467,11 +474,22 @@ class MultiHadronEventGANDataModule(LightningDataModule):
     def _plot_dist(self, filepath, data, xlabels, ylabels=None, legend_labels=None, labels=None):
         """ Draw distribution diagrams for a list of three data sets """
         plt.clf()
-        _, ax = plt.subplots(2, 2, figsize=(13, 8))
+        plt.rcParams.update({
+            "text.usetex": False,
+            "font.family": "serif",
+            "font.size": 14,
+            "axes.labelsize": 14,
+            "legend.fontsize": 14,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 12,
+        })
+        _, ax = plt.subplots(2, 2, figsize=(13, 9))
 
         for r in range(len(data)):
             for c in range(len(data)):
                 samples = data[r][c]
+                colour = "maroon"
+                
                 # Setting the appropriate bin range
                 if legend_labels[r][c].startswith("Hadron Multiplicity"):
                     sample_range = [1, max(samples)]
@@ -483,24 +501,24 @@ class MultiHadronEventGANDataModule(LightningDataModule):
                 else:
                     bins = "scott"
 
-                # Preparing a chart
-                ax[r][c].hist(samples, bins=bins, color="black", rwidth=0.9, label=legend_labels[r][c])
-                ax[r][c].set_xlabel(xlabels[r][c])
-                if ylabels[r][c] is not None:
-                    ax[r][c].set_ylabel(ylabels[r][c])
-                ax[r][c].legend(loc='upper right')
-
                 # Setting the ticks along OX if needed
                 if legend_labels[r][c].startswith("Hadron Multiplicity"):
                     density = 2
                     xticks = np.arange(start=sample_range[0] - 1, stop=sample_range[1] + 1, 
                                     step=density)[1:]
                     ax[r][c].set_xticks(xticks)
+                    colour = "black"
+
+                # Preparing a chart
+                ax[r][c].hist(samples, bins=bins, color=colour, rwidth=0.9, label=legend_labels[r][c])
+                ax[r][c].set_xlabel(xlabels[r][c], labelpad=15)
+                if ylabels[r][c] is not None:
+                    ax[r][c].set_ylabel(ylabels[r][c], labelpad=12)
+                ax[r][c].legend(loc='upper right')
 
         plt.tight_layout()
         plt.savefig(filepath)
         print("Distribution diagrams have been saved in\n   ", filepath)
-
 
 @dataclass
 class HadronsWithTypes:

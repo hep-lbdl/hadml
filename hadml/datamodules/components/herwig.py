@@ -689,8 +689,17 @@ class HerwigMultiHadronEventDataset(Dataset):
         """ This method is mainly responsible for tokenisation and building sentences containing 
         "cluster/hadron padding tokens". It returns a pair of prepared sentences. """
         
-        cluster = self.clusters[index]
-        hadrons = self.hadrons_with_types[index]
+        cluster_src = self.clusters[index]
+        cluster = type(cluster_src)(
+            kinematics=cluster_src.kinematics.clone(),
+            quark_types=cluster_src.quark_types.clone(),
+            angles=cluster_src.angles.clone(),
+        )
+        hadrons_src = self.hadrons_with_types[index]
+        hadrons = type(hadrons_src)(
+            kinematics=hadrons_src.kinematics.clone(),
+            types=hadrons_src.types.clone(),
+        )
         
         # Standardising cluster kinematics
         if self.cluster_stats is not None:
@@ -705,7 +714,7 @@ class HerwigMultiHadronEventDataset(Dataset):
             hadrons.kinematics[:, 0] = hadrons.kinematics[:, 0] / self.hadron_stats.energy_std
             hadrons.kinematics[:, 1:4] = hadrons.kinematics[:, 1:4] - self.hadron_stats.momentum_mean
             hadrons.kinematics[:, 1:4] = hadrons.kinematics[:, 1:4] / self.hadron_stats.momentum_std
-
+        
         # Quark PIDs: (+/-) 1-8 -> transformation -> 0-16
         cluster.quark_types = torch.where(cluster.quark_types < 0, torch.abs(cluster.quark_types), 
                                           cluster.quark_types + 8)
@@ -752,7 +761,7 @@ class HerwigMultiHadronEventDataset(Dataset):
 @dataclass
 class KinematicStatistics:
     """ Class holding statistical data related to momenta and energy. """
-    momentum_mean: float
-    momentum_std: float
-    energy_mean: float
-    energy_std: float
+    momentum_mean: torch.Tensor
+    momentum_std: torch.Tensor
+    energy_mean: torch.Tensor
+    energy_std: torch.Tensor

@@ -1,8 +1,8 @@
 from typing import Optional, Callable, Tuple
-
 import torch
 from pytorch_lightning import LightningModule
 from torchmetrics import MinMetric, MeanMetric
+
 
 class ParticleEmbeddingModule(LightningModule):
     """Metric Learning. Embedding nodes into a vector space so that similar nodes are close together.
