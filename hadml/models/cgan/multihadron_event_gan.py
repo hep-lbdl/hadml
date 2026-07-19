@@ -106,7 +106,7 @@ class MultiHadronEventGANModule(LightningModule):
             # Generator turn
             fake_hadrons = self(gen_input)
             score_for_fake = self.discriminator(fake_hadrons)
-            score_for_fake = self._sanitize_tensor(score_for_fake, "score_for_fake", 50.0)
+            score_for_fake = self._sanitise_tensor(score_for_fake, "score_for_fake", 50.0)
 
             generator_loss = self._generator_loss(score_for_fake)
 
@@ -137,9 +137,9 @@ class MultiHadronEventGANModule(LightningModule):
             # Discriminator turn
             fake_hadrons = self(gen_input).detach()
             score_for_fake = self.discriminator(fake_hadrons)
-            score_for_fake = self._sanitize_tensor(score_for_fake, "score_for_fake", 50.0)
+            score_for_fake = self._sanitise_tensor(score_for_fake, "score_for_fake", 50.0)
             score_for_real = self.discriminator(real_hadrons)
-            score_for_real = self._sanitize_tensor(score_for_real, "score_for_real", 50.0)
+            score_for_real = self._sanitise_tensor(score_for_real, "score_for_real", 50.0)
 
             discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
             self.log("discriminator_loss", discriminator_loss, prog_bar=True)
