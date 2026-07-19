@@ -9,7 +9,10 @@ import numpy as np
 import torch
 from omegaconf import DictConfig
 from pytorch_lightning import Callback
-from pytorch_lightning.loggers import LightningLoggerBase
+try:
+    from pytorch_lightning.loggers import Logger as LightningLoggerBase
+except ImportError:
+    from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.utilities import rank_zero_only
 from torch import nn, Tensor
 from hadml.utils import pylogger, rich_utils
