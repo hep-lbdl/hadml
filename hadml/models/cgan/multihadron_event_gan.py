@@ -48,6 +48,11 @@ class MultiHadronEventGANModule(LightningModule):
             "momentum_mean" : stats["hadron_momentum_mean"], "momentum_std" : stats["hadron_momentum_std"],
             "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
         }
+        # Register stats as buffers so Lightning keeps them on the module device.
+        self.register_buffer("hadron_momentum_mean", torch.as_tensor(stats["hadron_momentum_mean"]))
+        self.register_buffer("hadron_momentum_std", torch.as_tensor(stats["hadron_momentum_std"]))
+        self.register_buffer("hadron_energy_mean", torch.as_tensor(stats["hadron_energy_mean"]))
+        self.register_buffer("hadron_energy_std", torch.as_tensor(stats["hadron_energy_std"]))
 
     def _sanitise_tensor(self, x, name="tensor", clamp_val=50.0):
         if not torch.isfinite(x).all():
@@ -113,10 +118,15 @@ class MultiHadronEventGANModule(LightningModule):
             if self.hparams.deviation_coeff > 0:
                 valid_mask = (fake_hadrons[:, :, self.hadron_kins_dim:self.hadron_kins_dim+1] == 0.0).float()
 
+                energy_std = self.hadron_energy_std.to(dtype=fake_hadrons.dtype)
+                energy_mean = self.hadron_energy_mean.to(dtype=fake_hadrons.dtype)
+                momentum_std = self.hadron_momentum_std.to(dtype=fake_hadrons.dtype)
+                momentum_mean = self.hadron_momentum_mean.to(dtype=fake_hadrons.dtype)
+
                 destandardised_energy = fake_hadrons[:, :, 0:1] * \
-                    self.hadron_stats["energy_std"] + self.hadron_stats["energy_mean"]
+                    energy_std + energy_mean
                 destandardised_momentum = fake_hadrons[:, :, 1:4] * \
-                    self.hadron_stats["momentum_std"] + self.hadron_stats["momentum_mean"]
+                    momentum_std + momentum_mean
                 
                 destandardised_kin = torch.cat([destandardised_energy, destandardised_momentum], dim=2)
                 destandardised_kin = destandardised_kin * valid_mask
