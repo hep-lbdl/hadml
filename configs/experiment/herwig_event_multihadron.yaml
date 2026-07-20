@@ -43,7 +43,7 @@ trainer:
   # Configuration for multiple GPUs (DDP strategy)
   accelerator: gpu
   num_nodes: 1
-  devices: 1
+  # devices: 1
   # strategy: "ddp"
 
   # If you have a small training data set, set the below line to 1
