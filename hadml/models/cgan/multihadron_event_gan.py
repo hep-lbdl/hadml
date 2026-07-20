@@ -377,6 +377,29 @@ class MultiHadronEventGANModule(LightningModule):
             truths_kin = truths[truths[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
             truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
 
+            # ==================================================================
+            # ================= FOR SAVING PREDICTIONS AND TRUTHS ==============
+            # ==================================================================
+            # save_dir = os.path.join(
+            #     self.datamodule.data_dir,
+            #     "plots",
+            #     self.datamodule.raw_processed_filename.split(".")[0],
+            #     "prediction_truth_tensors",
+            # )
+            # os.makedirs(save_dir, exist_ok=True)
+            # save_path = os.path.join(
+            #     save_dir, f"{self.trainer.global_step}.pt")
+            # torch.save(
+            #     {
+            #         "preds_kin": preds_kin.cpu(),
+            #         "preds_types": preds_types.cpu(),
+            #         "truths_kin": truths_kin.cpu(),
+            #         "truths_types": truths_types.cpu(),
+            #     },
+            #     save_path,
+            # )
+            # ==================================================================
+
             # Destandardising the kinematics of the hadrons
             # Out-of-place calculation using standard operations
             m_mean, m_std = self.hadron_stats["momentum_mean"], self.hadron_stats["momentum_std"]
@@ -644,8 +667,8 @@ class MultiHadronEventGANModule(LightningModule):
             if "uncommon_pid" in pids_to_idx:
                 plt.xticks(ticks=x_ticks, labels=x_labels, rotation=90)
             else:
-                plt.xticks(ticks=[x for x in x_ticks[::5 if len(x_ticks) > 25 else 1]], 
-                           labels=[x for x in x_labels[::5 if len(x_labels) > 25 else 1]], 
+                plt.xticks(ticks=[x for x in x_ticks[::5 if len(x_ticks) > 50 else 1]], 
+                           labels=[x for x in x_labels[::5 if len(x_labels) > 50 else 1]], 
                            rotation=90)
             plt.title(f"Hadron Type Distribution\n(validation data, {len(hadron_types)} hadrons, " + \
                       f"{len(pids_to_idx)} types)")
