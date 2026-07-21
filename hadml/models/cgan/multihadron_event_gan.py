@@ -215,7 +215,7 @@ class MultiHadronEventGANModule(LightningModule):
             preds_batches = [d["gen_output"] for d in validation_step_outputs]
             # [n_hadron_sets, max_n_hadrons, features]
             preds = [d for pred in preds_batches for d in pred]      
-           
+            
             # ==================================================================
             # ================= FOR SAVING PREDICTIONS AND TRUTHS ==============
             # ==================================================================
@@ -234,7 +234,14 @@ class MultiHadronEventGANModule(LightningModule):
                 },
                 save_path,
             )
-            # ==================================================================            
+            # ==================================================================  
+
+            # Rejecting predicted hadron sequences with zeroed kinematics (when 
+            # RamboOnDiet could find any solution): [n_hadron_sets, max_n_hadrons, features]
+            invalid_sequence_mask = [torch.all(d[:, :self.hadron_kins_dim] == 0.0).item() for d in preds]
+            preds = [d for d, invalid in zip(preds, invalid_sequence_mask) if not invalid]
+            print(f"Number of invalid sequences in the validation set: {sum(invalid_sequence_mask)}")
+
 
             sentence_stats["pred_n_hads_per_cluster"] = \
                 [len(d[d[:, self.hadron_kins_dim] == 0.0]) for d in preds]
@@ -315,6 +322,11 @@ class MultiHadronEventGANModule(LightningModule):
             truths_kin = truths[truths[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
             truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1  
             
+            truth_energy = truths_kin[:, 0]
+            truth_momenta = truths_kin[:, 1:4]
+            preds_energy = preds_kin[:, 0]
+            preds_momenta = preds_kin[:, 1:4]
+
             # Hadron type histogram
             sample_range = [0, truths_types.max()]
             bins = np.linspace(
@@ -326,8 +338,8 @@ class MultiHadronEventGANModule(LightningModule):
             density = n_types // 25 if n_types // 25 > 0 else 1
             fig = plt.figure(figsize=(9, 6))
             plt.title("Hadron Type Distribution")
-            plt.hist(truths_types, bins=bins, color="maroon", label="True", rwidth=0.7)
-            plt.hist(preds_types, bins=bins, color="black", label="Generated", rwidth=0.5)
+            plt.hist(truths_types, bins=bins, color="maroon", label="True", rwidth=0.7, density=True)
+            plt.hist(preds_types, bins=bins, color="black", label="Generated", rwidth=0.5, density=True)
             plt.ylabel("Hadrons", labelpad=12)
             plt.xlabel("Hadron Most Common ID\n(mapped from PIDs)", labelpad=15)
             xticks = np.arange(start=sample_range[0] - 1, stop=sample_range[1] + 1, step=density)[1:]
@@ -342,31 +354,57 @@ class MultiHadronEventGANModule(LightningModule):
             fig, axs = plt.subplots(2, 2, figsize=(12, 9))
             fig.subplots_adjust(wspace=0.35, hspace=0.35)        
             labels = ["Generated", "True"]
-            (records, bins, _) = axs[0][0].hist(truths_kin[:, 0], bins="auto", color="maroon", 
-                                        label=labels[1], alpha=0.7, density=True)
-            min_x_value, max_x_value = min(bins), max(bins)
-            axs[0][0].set_xlim((min_x_value, max_x_value))
-            axs[0][0].hist(preds_kin[:, 0], bins=bins, color="black", label=labels[0], alpha=0.7, density=True)
+
+            bins = np.histogram_bin_edges(truth_energy, bins="auto")
+            records, bins, _ = axs[0][0].hist(
+                truth_energy, bins=bins, 
+                color="maroon", 
+                label="True",
+                density=True
+            )
+            axs[0][0].hist(
+                preds_energy, 
+                bins=bins, 
+                color="black", 
+                alpha=0.7, 
+                label="Generated",
+                density=True
+            )
+            axs[0][0].set_xlim(truth_energy.min().item(), 
+                               truth_energy.max().item())
+            axs[0][0].set_ylim(0, records.max() * 1.15)
             axs[0][0].set_xlabel("Energy [GeV]", labelpad=15)
-            axis = ['x', 'y', 'z']
-            for row in range(0, 2):
-                for col in range(0, 2):
-                    if row == 0 and col == 0:
-                        continue
-                    feature = row + col
-                    axs[row][col].set_xlabel(f"Momentum ({axis[feature].capitalize()})", labelpad=15)
-                    (records, bins, _) = axs[row][col].hist(
-                        truths_kin[:, feature], bins="auto", rwidth=0.9, color="maroon", 
-                        label=labels[1], density=True)
-                    axs[row][col].hist(
-                        preds_kin[:, feature], bins=bins, color="black", rwidth=0.8,
-                        label=labels[0], alpha=0.7, density=True)
-                    min_x_value, max_x_value = min(bins), max(bins)
-                    axs[row][col].set_xlim((min_x_value, max_x_value))
-            for row in range(0, 2):
-                for col in range(0, 2):
-                    axs[row][col].set_ylabel("Hadrons", labelpad=12)
-                    axs[row][col].legend(loc='upper right')
+
+            # Flattening the axis labels for a 1D mapping
+            axis_names = ['x', 'y', 'z']
+            # Flattening the 2x2 grid to a 1D array of 4 subplots
+            axs_flat = axs.flatten() 
+            # Looping through the 3 momentum columns (indices 0, 1, 2)
+            for feature in range(3):
+                # Energy is at index 0, so momentum plots occupy indices 1, 2, and 3
+                ax = axs_flat[feature + 1] 
+                ax.set_xlabel(f"Momentum ({axis_names[feature].upper()})", labelpad=15)                
+                (records, bins, _) = ax.hist(
+                    truth_momenta[:, feature], bins="auto", rwidth=0.9, color="maroon", 
+                    label=labels[1], density=True
+                )
+                ax.hist(
+                    preds_momenta[:, feature], bins=bins, color="black", 
+                    rwidth=0.8, density=True,
+                    label=labels[0], alpha=0.7
+                )
+                
+                max_y_value = max(records)
+                ax.set_ylim((0, max_y_value + max_y_value * 0.15))
+                mean_val = truth_momenta[:, feature].mean().item()
+                std_val = truth_momenta[:, feature].std().item()
+                ax.set_xlim((mean_val - 3 * std_val, mean_val + 3 * std_val))
+            
+            # Global adjustments for all 4 subplots
+            for ax in axs_flat:
+                ax.set_ylabel("Hadrons", labelpad=12)
+                ax.legend(loc='upper right')
+                
             fig.suptitle("Hadron Kinematics Distribution (Laboratory Frame).\n" + \
                          "\"True\" defines the scale and limits.")
             diagrams["hadron_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
