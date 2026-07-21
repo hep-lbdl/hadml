@@ -49,7 +49,7 @@ test: True
 ckpt_path: null
 
 # seed for random number generators in pytorch, numpy and python.random
-seed: null
+seed: 42
 
 # set the W&B sweep configuration
 hyperparameter-search: False

@@ -35,7 +35,8 @@ trainer:
 
   # Sanity check and validation frequency
   num_sanity_val_steps: -1
-  check_val_every_n_epoch: 1
+  # check_val_every_n_epoch: 1
+  val_check_interval: 10
   
   # Configuration for multiple GPUs (DDP strategy)
   accelerator: cpu
