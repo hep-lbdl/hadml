@@ -422,9 +422,9 @@ class MultiHadronEventGANModule(LightningModule):
             density = n_types // 25 if n_types // 25 > 0 else 1
             fig = plt.figure(figsize=(9, 6))
             plt.title("Hadron Type Distribution")
-            plt.hist(truths_types, bins=bins, color="maroon", label="True", rwidth=0.7)
+            plt.hist(truths_types, bins=bins, color="maroon", label="True", rwidth=0.7, density=True)
             plt.hist(preds_types, bins=bins, color="black", label="Generated", 
-                     rwidth=0.5)
+                     rwidth=0.5, density=True)
             plt.ylabel("Hadrons", labelpad=12)
             plt.xlabel("Hadron Most Common ID\n(mapped from PIDs)", labelpad=20)
             xticks = np.arange(start=sample_range[0] - 1, stop=sample_range[1] + 1, step=density)[1:]
