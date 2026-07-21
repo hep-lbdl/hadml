@@ -213,7 +213,6 @@ class MultiHadronEventGANModule(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         gen_input, real_hadrons = batch
-
         if self.trainer.state.stage == "validate":
             fake_hadrons = self(gen_input)
             swd_shape = fake_hadrons.shape
@@ -255,7 +254,8 @@ class MultiHadronEventGANModule(LightningModule):
             return {"gen_output": fake_hadrons.cpu().detach(), 
                     "disc_input": real_hadrons.cpu().detach(),
                     "swd_token": swd_token, "swd_sentence": swd_sentence, 
-                    "swd_hadron_multiplicity": swd_hadron_multiplicity}
+                    "swd_hadron_multiplicity": swd_hadron_multiplicity,
+                    "clusters": gen_input[:, 0, :].cpu().detach()}
         
         elif self.trainer.state.stage == "sanity_check":
             return {"gen_input": gen_input[:, 0, :].cpu().detach(),
@@ -289,13 +289,35 @@ class MultiHadronEventGANModule(LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         truths_batches = [d["disc_input"] for d in validation_step_outputs]
         truths_events = [event for batch in truths_batches for event in batch]
-        
+
         if self.trainer.state.stage == "validate":
             sentence_stats = {}
             
             # Extract and flatten predictions
             preds_batches = [d["gen_output"] for d in validation_step_outputs]
             preds_events = [event for batch in preds_batches for event in batch]      
+
+            # ==================================================================
+            # ================= FOR SAVING PREDICTIONS AND TRUTHS ==============
+            # ==================================================================
+            # clusters = [d["clusters"] for d in validation_step_outputs]
+            # save_dir = os.path.join(
+            #     self.datamodule.data_dir,
+            #     "plots",
+            #     self.datamodule.raw_processed_filename.split(".")[0],
+            #     "validation_batches",
+            # )
+            # os.makedirs(save_dir, exist_ok=True)
+            # save_path = os.path.join(save_dir, f"{self.trainer.global_step}.pt")
+            # torch.save(
+            #     {
+            #         "preds_batches": preds_batches,
+            #         "truths_batches": truths_batches,
+            #         "clusters": clusters,
+            #     },
+            #     save_path,
+            # )
+            # ==================================================================
             
             # Compute multiplicity stats safely using the unstacked event lists
             if not self.hparams.gumbel_softmax_hard:
@@ -376,29 +398,6 @@ class MultiHadronEventGANModule(LightningModule):
             preds_types = torch.argmax(predictions[:, self.hadron_kins_dim:], dim=1) - 1
             truths_kin = truths[truths[:, self.hadron_kins_dim] != 1.0][:, :self.hadron_kins_dim]
             truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
-
-            # ==================================================================
-            # ================= FOR SAVING PREDICTIONS AND TRUTHS ==============
-            # ==================================================================
-            # save_dir = os.path.join(
-            #     self.datamodule.data_dir,
-            #     "plots",
-            #     self.datamodule.raw_processed_filename.split(".")[0],
-            #     "prediction_truth_tensors",
-            # )
-            # os.makedirs(save_dir, exist_ok=True)
-            # save_path = os.path.join(
-            #     save_dir, f"{self.trainer.global_step}.pt")
-            # torch.save(
-            #     {
-            #         "preds_kin": preds_kin.cpu(),
-            #         "preds_types": preds_types.cpu(),
-            #         "truths_kin": truths_kin.cpu(),
-            #         "truths_types": truths_types.cpu(),
-            #     },
-            #     save_path,
-            # )
-            # ==================================================================
 
             # Destandardising the kinematics of the hadrons
             # Out-of-place calculation using standard operations

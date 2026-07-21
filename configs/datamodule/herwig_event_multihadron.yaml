@@ -1,7 +1,7 @@
 _target_: hadml.datamodules.gan_datamodule.MultiHadronEventGANDataModule
 
 # Basic parameters
-batch_size: 4096
+batch_size: 512
 train_val_test_split: [0.8, 0.1, 0.1]
 
 # Parallel loading
@@ -19,24 +19,24 @@ data_dir: "data/Herwig"
 
 # Raw file paths (the GAN datamodule will pass those arguments to an appropriate parser)
 raw_file_list:
-  - "AllClusters_pions_272K.dat"
-  # - "AllClusters_pions_10K.dat"
+  # - "AllClusters_pions_272K.dat"
+  - "AllClusters_pions_10K.dat"
   # - "AllClusters_1M.dat"
 
-processed_filename: "pions_only_events_272K.npy"
-# processed_filename: "pions_only_events_10K.npy"
+# processed_filename: "pions_only_events_272K.npy"
+processed_filename: "pions_only_events_10K.npy"
 # processed_filename: "multihadron_events_1M.npy"
 
-training_stats_filename: "pions_only_events_272K_train_stats.npy"
-# training_stats_filename: "pions_only_events_10K_train_stats.npy"
+# training_stats_filename: "pions_only_events_272K_train_stats.npy"
+training_stats_filename: "pions_only_events_10K_train_stats.npy"
 # training_stats_filename: "multihadron_events_1M_train_stats.npy"
 
-dist_plots_filename: "dist_plots_pions_only_events_272K.pdf"
-# dist_plots_filename: "dist_plots_pions_only_events_10K.pdf"
+# dist_plots_filename: "dist_plots_pions_only_events_272K.pdf"
+dist_plots_filename: "dist_plots_pions_only_events_10K.pdf"
 # dist_plots_filename: "dist_plots_multihadron_events_1M.pdf"
 
-pid_map_file: "pid_to_idx_pions_only_events_272K.pkl"
-# pid_map_file: "pid_to_idx_pions_only_events_10K.pkl"
+# pid_map_file: "pid_to_idx_pions_only_events_272K.pkl"
+pid_map_file: "pid_to_idx_pions_only_events_10K.pkl"
 # pid_map_file: "pid_to_idx_multihadron_events_1M.pkl"
 
 # Use it if you want to invoke data preparation without initialising your PyTorch Lightning model
