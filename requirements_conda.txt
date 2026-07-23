@@ -1,0 +1,101 @@
+# Name                     Version          Build               Channel
+aiohappyeyeballs           2.7.1            pypi_0              pypi
+aiohttp                    3.14.3           pypi_0              pypi
+aiosignal                  1.4.0            pypi_0              pypi
+annotated-types            0.7.0            pyhd8ed1ab_1        conda-forge
+antlr4-python3-runtime     4.9.3            pypi_0              pypi
+attrs                      26.1.0           pypi_0              pypi
+backports.zstd             1.6.0            py314h680f03e_0     conda-forge
+brotli-python              1.2.0            py314h3daef5d_1     conda-forge
+bzip2                      1.0.8            h80987f9_6
+ca-certificates            2026.7.22        hbd8a1cb_0          conda-forge
+certifi                    2026.7.22        pyhd8ed1ab_0        conda-forge
+charset-normalizer         3.4.9            pyhd8ed1ab_0        conda-forge
+click                      8.4.2            pyhc90fa1f_0        conda-forge
+colorlog                   6.12.0           pypi_0              pypi
+contourpy                  1.3.3            pypi_0              pypi
+cycler                     0.12.1           pypi_0              pypi
+filelock                   3.32.0           pypi_0              pypi
+fonttools                  4.63.0           pypi_0              pypi
+frozenlist                 1.8.0            pypi_0              pypi
+fsspec                     2026.6.0         pypi_0              pypi
+h2                         4.3.0            pyhcf101f3_0        conda-forge
+hpack                      4.2.0            pyhd8ed1ab_0        conda-forge
+hydra-colorlog             1.2.0            pypi_0              pypi
+hydra-core                 1.4.0.dev6       pypi_0              pypi
+hyperframe                 6.1.0            pyhd8ed1ab_0        conda-forge
+idna                       3.18             pyhcf101f3_0        conda-forge
+jinja2                     3.1.6            pypi_0              pypi
+joblib                     1.5.3            pypi_0              pypi
+kiwisolver                 1.5.0            pypi_0              pypi
+libabseil                  20260526.0       cxx17_h2062a1b_1    conda-forge
+libcxx                     22.1.2           hf894667_0
+libexpat                   2.8.2            h50f4ffc_1
+libffi                     3.4.8            h4a3ca97_3
+libmpdec                   4.0.1            haa24f5a_0
+libzlib                    1.3.2            hb4cf58c_0
+lightning                  2.6.5            pypi_0              pypi
+lightning-utilities        0.15.3           pypi_0              pypi
+lz4-c                      1.9.4            hd7fd590_5
+markdown-it-py             4.2.0            pypi_0              pypi
+markupsafe                 3.0.3            pypi_0              pypi
+matplotlib                 3.11.1           pypi_0              pypi
+mdurl                      0.1.2            pypi_0              pypi
+mpmath                     1.3.0            pypi_0              pypi
+multidict                  6.7.1            pypi_0              pypi
+narwhals                   2.24.0           pypi_0              pypi
+ncurses                    6.5              hee39554_0
+networkx                   3.6.1            pypi_0              pypi
+numpy                      2.5.1            pypi_0              pypi
+omegaconf                  2.4.0.dev13      pypi_0              pypi
+openssl                    3.6.3            hd24854e_0          conda-forge
+packaging                  26.2             pyhc364b38_0        conda-forge
+pandas                     3.0.5            pypi_0              pypi
+pillow                     12.3.0           pypi_0              pypi
+pip                        26.1.2           pyh0d26453_0
+platformdirs               4.11.0           pyhcf101f3_0        conda-forge
+pot                        0.9.7            pypi_0              pypi
+propcache                  0.5.2            pypi_0              pypi
+protobuf                   7.35.1           py314h62555b8_1     conda-forge
+psutil                     7.2.2            pypi_0              pypi
+pydantic                   2.13.4           pyhcf101f3_0        conda-forge
+pydantic-core              2.46.4           py314h54f3292_0     conda-forge
+pygments                   2.20.0           pypi_0              pypi
+pyparsing                  3.3.2            pypi_0              pypi
+pyrootutils                1.0.4            pypi_0              pypi
+pysocks                    1.7.1            pyha55dd90_7        conda-forge
+python                     3.14.6           h80e0c04_101_cp314
+python-dateutil            2.9.0.post0      pypi_0              pypi
+python-dotenv              1.2.2            pypi_0              pypi
+python_abi                 3.14             4_cp314
+pytorch-lightning          2.6.5            pypi_0              pypi
+pyyaml                     6.0.3            py314h6e9b3f0_1     conda-forge
+readline                   8.3              h0b18652_0
+requests                   2.34.2           pyhcf101f3_0        conda-forge
+rich                       15.0.0           pypi_0              pypi
+scikit-learn               1.9.0            pypi_0              pypi
+scipy                      1.18.0           pypi_0              pypi
+sentry-sdk                 2.66.1           pyhd8ed1ab_0        conda-forge
+setuptools                 83.0.0           pypi_0              pypi
+six                        1.17.0           pypi_0              pypi
+sqlite                     3.53.2           h1cce5ff_0
+sympy                      1.14.0           pypi_0              pypi
+threadpoolctl              3.6.0            pypi_0              pypi
+tk                         8.6.15           hcd8a7d5_0
+torch                      2.13.0           pypi_0              pypi
+torch-geometric            2.8.0.post1      pypi_0              pypi
+torchmetrics               1.9.0            pypi_0              pypi
+torchvision                0.28.0           pypi_0              pypi
+tqdm                       4.69.0           pypi_0              pypi
+typing-extensions          4.16.0           h69aa097_0          conda-forge
+typing-inspection          0.4.2            pyhcf101f3_2        conda-forge
+typing_extensions          4.16.0           pyhcf101f3_0        conda-forge
+tzdata                     2026c            he532380_0
+urllib3                    2.7.0            pyhd8ed1ab_0        conda-forge
+wandb                      0.28.1           py314h54f3292_0     conda-forge
+xxhash                     3.8.1            pypi_0              pypi
+xz                         5.8.2            h8bbcb1d_0
+yaml                       0.2.5            h925e9cb_3          conda-forge
+yarl                       1.24.5           pypi_0              pypi
+zlib                       1.3.2            hb4cf58c_0
+zstd                       1.5.7            h817c040_0
