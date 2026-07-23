@@ -29,9 +29,16 @@ conda activate herwig
 
 # Install core dependencies via pip
 python -m pip install torch torchvision
-python -m pip install lightning hydra-core hydra-colorlog pyrootutils rich
-python -m pip install torch_geometric pandas scipy matplotlib scikit-learn wandb POT
-
+python -m pip install pyrootutils
+python -m pip install hydra-core
+python -m pip install lightning
+python -m pip install rich
+python -m pip install --pre --upgrade hydra-core         
+python -m pip install hydra-colorlog
+python -m pip install torch_geometric
+python -m pip install pandas scipy matplotlib
+python -m pip install scikit-learn wandb
+python -m pip install POT
 
 ```
 
