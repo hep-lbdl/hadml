@@ -166,3 +166,6 @@ slurm*.out
 
 # Temp shell scripts
 temp*.sh
+
+# MacOS system files
+*.DS_Store

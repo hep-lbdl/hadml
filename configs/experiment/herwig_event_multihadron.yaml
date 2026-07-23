@@ -48,6 +48,3 @@ trainer:
 
   # If you have a small training data set, set the below line to 1
   log_every_n_steps: 25
-
-  # Gradient clipping
-  gradient_clip_val: 50.0

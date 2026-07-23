@@ -200,7 +200,7 @@ def train_wandb(cfg: DictConfig) -> None:
     train(cfg, logger=logger)
 
 
-@hydra.main(version_base="1.2", config_path=root / "configs", config_name="train.yaml")
+@hydra.main(version_base="1.2", config_path=str(root / "configs"), config_name="train.yaml")
 def main(cfg: DictConfig) -> None:
     if cfg.get("hyperparameter_search"):
         sweep(cfg)

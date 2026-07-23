@@ -61,6 +61,10 @@ class MultiHadronEventGANModule(LightningModule):
         self.register_buffer("cluster_momentum_std", torch.as_tensor(stats["cluster_momentum_std"]))
         self.register_buffer("cluster_energy_mean", torch.as_tensor(stats["cluster_energy_mean"]))
         self.register_buffer("cluster_energy_std", torch.as_tensor(stats["cluster_energy_std"]))
+        
+        self.validation_step_outputs = []
+        # Required for manual GAN optimization in PyTorch Lightning 2.0+
+        self.automatic_optimization = False
 
     def _sanitise_tensor(self, x, name="tensor", clamp_val=50.0):
         if not torch.isfinite(x).all():
@@ -91,7 +95,7 @@ class MultiHadronEventGANModule(LightningModule):
         orig_dtype = clean_types_logits.dtype
         safe_tau = max(self.current_gumbel_temp, 1e-4) # Prevent division by zero
         
-        sampled_types = torch.nn.functional.gumbel_softmax(
+        sampled_types = self._mps_safe_gumbel_softmax(
             clean_types_logits.float(), # Force fp32 execution
             tau=safe_tau, 
             hard=self.hparams.gumbel_softmax_hard
@@ -109,96 +113,122 @@ class MultiHadronEventGANModule(LightningModule):
     def setup(self, stage=None):
         pass
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
+    def _mps_safe_gumbel_softmax(self, logits, tau=1.0, hard=False, eps=1e-10):
+        """Out-of-place Gumbel-Softmax to prevent MPS/Non-CUDA GPU backend NaN crashes."""
+        # Generate Gumbel noise explicitly and out-of-place
+        U = torch.rand_like(logits)
+        gumbel_noise = -torch.log(-torch.log(U + eps) + eps)
+        
+        # Add noise and apply softmax
+        y = logits + gumbel_noise
+        y = torch.nn.functional.softmax(y / tau, dim=-1)
+        
+        if hard:
+            # Straight-through estimator
+            index = y.max(dim=-1, keepdim=True)[1]
+            y_hard = torch.zeros_like(logits, memory_format=torch.legacy_contiguous_format).scatter_(-1, index, 1.0)
+            y = y_hard - y.detach() + y
+            
+        return y
+
+    def training_step(self, batch, batch_idx):
+        # Fetch manual optimizers
+        opt_g, opt_d = self.optimizers()
+
         # Updating the Gumbel Softmax temperature
         self._update_gumbel_temp()
         
         gen_input, real_hadrons = batch
         
-        if optimizer_idx == 0:
-            # Generator turn
-            fake_hadrons = self(gen_input)
-            score_for_fake = self.discriminator(fake_hadrons)
-            score_for_fake = self._sanitise_tensor(score_for_fake, "score_for_fake", 50.0)
+        # ==================================================================
+        # 1. Train Generator
+        # ==================================================================
+        opt_g.zero_grad()
+        fake_hadrons = self(gen_input)
+        score_for_fake = self.discriminator(fake_hadrons)
+        score_for_fake = self._sanitise_tensor(score_for_fake, "score_for_fake", 50.0)
 
-            generator_loss = self._generator_loss(score_for_fake)
+        generator_loss = self._generator_loss(score_for_fake)
 
-            if self.hparams.deviation_coeff > 0:
-                # Destandardising the kinematics of the fake hadrons
-                valid_mask = (fake_hadrons[:, :, self.hadron_kins_dim:self.hadron_kins_dim+1] == 0.0).float()
-                hadron_energy_std = self.hadron_energy_std.to(dtype=fake_hadrons.dtype)
-                hadron_energy_mean = self.hadron_energy_mean.to(dtype=fake_hadrons.dtype)
-                hadron_momentum_std = self.hadron_momentum_std.to(dtype=fake_hadrons.dtype)
-                hadron_momentum_mean = self.hadron_momentum_mean.to(dtype=fake_hadrons.dtype)
-                hadron_destandardised_energy = fake_hadrons[:, :, 0:1] * \
-                    hadron_energy_std + hadron_energy_mean
-                hadron_destandardised_momentum = fake_hadrons[:, :, 1:4] * \
-                    hadron_momentum_std + hadron_momentum_mean
-                hadron_destandardised_kin = torch.cat([hadron_destandardised_energy, hadron_destandardised_momentum], dim=2)
-                hadron_destandardised_kin = hadron_destandardised_kin * valid_mask
-                actual_momentum_sum = hadron_destandardised_kin.sum(axis=1)
+        if self.hparams.deviation_coeff > 0:
+            # Destandardising the kinematics of the fake hadrons
+            valid_mask = (fake_hadrons[:, :, self.hadron_kins_dim:self.hadron_kins_dim+1] == 0.0).float()
+            hadron_energy_std = self.hadron_energy_std.to(dtype=fake_hadrons.dtype)
+            hadron_energy_mean = self.hadron_energy_mean.to(dtype=fake_hadrons.dtype)
+            hadron_momentum_std = self.hadron_momentum_std.to(dtype=fake_hadrons.dtype)
+            hadron_momentum_mean = self.hadron_momentum_mean.to(dtype=fake_hadrons.dtype)
+            hadron_destandardised_energy = fake_hadrons[:, :, 0:1] * \
+                hadron_energy_std + hadron_energy_mean
+            hadron_destandardised_momentum = fake_hadrons[:, :, 1:4] * \
+                hadron_momentum_std + hadron_momentum_mean
+            hadron_destandardised_kin = torch.cat([hadron_destandardised_energy, hadron_destandardised_momentum], dim=2)
+            hadron_destandardised_kin = hadron_destandardised_kin * valid_mask
+            actual_momentum_sum = hadron_destandardised_kin.sum(axis=1)
 
-                # Destandardising the kinematics of the corresponding clusters
-                cluster_energy_std = self.cluster_energy_std.to(dtype=gen_input.dtype)
-                cluster_energy_mean = self.cluster_energy_mean.to(dtype=gen_input.dtype)
-                cluster_momentum_std = self.cluster_momentum_std.to(dtype=gen_input.dtype)
-                cluster_momentum_mean = self.cluster_momentum_mean.to(dtype=gen_input.dtype)
-                destandardised_cluster_energy = gen_input[:, 0, 0:1] * \
-                    cluster_energy_std + cluster_energy_mean
-                destandardised_cluster_momentum = gen_input[:, 0, 1:4] * \
-                    cluster_momentum_std + cluster_momentum_mean
-                expected_momentum_sum = torch.cat([destandardised_cluster_energy, destandardised_cluster_momentum], dim=1)
+            # Destandardising the kinematics of the corresponding clusters
+            cluster_energy_std = self.cluster_energy_std.to(dtype=gen_input.dtype)
+            cluster_energy_mean = self.cluster_energy_mean.to(dtype=gen_input.dtype)
+            cluster_momentum_std = self.cluster_momentum_std.to(dtype=gen_input.dtype)
+            cluster_momentum_mean = self.cluster_momentum_mean.to(dtype=gen_input.dtype)
+            destandardised_cluster_energy = gen_input[:, 0, 0:1] * \
+                cluster_energy_std + cluster_energy_mean
+            destandardised_cluster_momentum = gen_input[:, 0, 1:4] * \
+                cluster_momentum_std + cluster_momentum_mean
+            expected_momentum_sum = torch.cat([destandardised_cluster_energy, destandardised_cluster_momentum], dim=1)
 
-                # Computing the deviation from the conservation law
-                deviation = (expected_momentum_sum - actual_momentum_sum).abs().sum(axis=1).mean()
-                self.log("deviation_from_conservation_law", deviation, prog_bar=True)
+            # Computing the deviation from the conservation law
+            deviation = (expected_momentum_sum - actual_momentum_sum).abs().sum(axis=1).mean()
+            self.log("deviation_from_conservation_law", deviation, prog_bar=True)
 
-                generator_loss += self.hparams.deviation_coeff * deviation
+            generator_loss += self.hparams.deviation_coeff * deviation
 
-            self.train_gen_loss(generator_loss)
-            self.log("generator_loss", generator_loss, prog_bar=True)
-            loss = generator_loss
-        
-        else:
-            # Discriminator turn
-            fake_hadrons = self(gen_input).detach()
-            score_for_fake = self.discriminator(fake_hadrons)
-            score_for_fake = self._sanitise_tensor(score_for_fake, "score_for_fake", 50.0)
-            score_for_real = self.discriminator(real_hadrons)
-            score_for_real = self._sanitise_tensor(score_for_real, "score_for_real", 50.0)
+        self.train_gen_loss(generator_loss)
+        self.log("generator_loss", generator_loss, prog_bar=True)
 
-            discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake)
-            self.log("discriminator_loss", discriminator_loss, prog_bar=True)
-        
-            # Computing the R1 gradient penalty
-            r1_grad_penalty = 0.0
-            if self.hparams.r1_reg > 0:
-                # Force FP32 context for the second-order derivative stability
-                with torch.cuda.amp.autocast(enabled=False):
-                    with sdpa_kernel(SDPBackend.MATH):
-                        # Ensure inputs are explicitly float32
-                        real_hadrons_fp32 = real_hadrons.detach().float().requires_grad_(True)                
-                        r1_grad_penalty = (
-                            get_r1_grad_penalty(self.discriminator, [real_hadrons_fp32]) * self.hparams.r1_reg
-                        )
-                
-                self.log("r1_grad_penalty", r1_grad_penalty)
-            
-            loss = discriminator_loss + r1_grad_penalty
+        self.manual_backward(generator_loss)
+        self._clip_and_sanitise_grads(self.generator)
+        opt_g.step()
 
-        return loss
+        # ==================================================================
+        # 2. Train Discriminator
+        # ==================================================================
+        opt_d.zero_grad()
+        fake_hadrons_detached = self(gen_input).detach()
+        score_for_fake_d = self.discriminator(fake_hadrons_detached)
+        score_for_fake_d = self._sanitise_tensor(score_for_fake_d, "score_for_fake", 50.0)
+        score_for_real = self.discriminator(real_hadrons)
+        score_for_real = self._sanitise_tensor(score_for_real, "score_for_real", 50.0)
 
-    def on_before_optimizer_step(self, optimizer, optimizer_idx):
+        discriminator_loss = self._discriminator_loss(score_for_real, score_for_fake_d)
+        self.log("discriminator_loss", discriminator_loss, prog_bar=True)
+
+        # Computing the R1 gradient penalty
+        r1_grad_penalty = 0.0
+        if self.hparams.r1_reg > 0:
+            with torch.cuda.amp.autocast(enabled=False):
+                with sdpa_kernel(SDPBackend.MATH):
+                    real_hadrons_fp32 = real_hadrons.detach().float().requires_grad_(True)                
+                    r1_grad_penalty = (
+                        get_r1_grad_penalty(self.discriminator, [real_hadrons_fp32]) * self.hparams.r1_reg
+                    )
+            self.log("r1_grad_penalty", r1_grad_penalty)
+
+        d_loss = discriminator_loss + r1_grad_penalty
+
+        self.manual_backward(d_loss)
+        self._clip_and_sanitise_grads(self.discriminator)
+        opt_d.step()
+
+    def _clip_and_sanitise_grads(self, model):
         import logging
-                
-        if any(p.grad is not None and not torch.isfinite(p.grad).all() for p in self.parameters()):
+        if any(p.grad is not None and not torch.isfinite(p.grad).all() for p in model.parameters()):
             logging.warning("NaNs or Infs found in gradients. Sanitising to valid numbers.")
-            for p in self.parameters():
+            for p in model.parameters():
                 if p.grad is not None:
                     p.grad = torch.nan_to_num(p.grad, nan=0.0, posinf=1.0, neginf=-1.0)
             
         clip_val = getattr(self.hparams, 'gradient_clip_val', 50.0) 
-        total_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), clip_val)
+        total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip_val)
         if total_norm > clip_val:
             logging.warning(f"Gradient norm {total_norm:.4f} exceeded clip value {clip_val}. Clipped.")
 
@@ -265,17 +295,26 @@ class MultiHadronEventGANModule(LightningModule):
                 n_projections=10*(swd_shape[1]+1)
             )
 
-            self.val_swd_hadron_multiplicity(swd_hadron_multiplicity)            
+            self.val_swd_hadron_multiplicity(swd_hadron_multiplicity)       
 
-            return {"gen_output": fake_hadrons.cpu().detach(), 
-                    "disc_input": real_hadrons.cpu().detach(),
-                    "swd_token": swd_token, "swd_sentence": swd_sentence, 
-                    "swd_hadron_multiplicity": swd_hadron_multiplicity,
-                    "clusters": gen_input[:, 0, :].cpu().detach()}
+            out = {
+                "gen_output": fake_hadrons.cpu().detach(), 
+                "disc_input": real_hadrons.cpu().detach(),
+                "swd_token": swd_token, 
+                "swd_sentence": swd_sentence, 
+                "swd_hadron_multiplicity": swd_hadron_multiplicity,
+                "clusters": gen_input[:, 0, :].cpu().detach()
+            }
+            self.validation_step_outputs.append(out)
+            return out
         
         elif self.trainer.state.stage == "sanity_check":
-            return {"gen_input": gen_input[:, 0, :].cpu().detach(),
-                    "disc_input": real_hadrons.cpu().detach()}
+            out = {
+                "gen_input": gen_input[:, 0, :].cpu().detach(),
+                "disc_input": real_hadrons.cpu().detach()
+            }
+            self.validation_step_outputs.append(out)
+            return out
 
     def test_step(self, batch, batch_idx):
         pass
@@ -296,45 +335,21 @@ class MultiHadronEventGANModule(LightningModule):
 
     def _compare(self, predictions, truths):
         images = self._prepare_plots(predictions.cpu().detach(), truths.cpu().detach())
-        # Attributes self.logger and self.logger.experiment are defined by the logger passed
-        # to the trainer which in turn uses an object of this model class: 
         if self.logger and self.logger.experiment is not None:
             log_images(logger=self.logger, key="MultiHadronEvent GAN",
                        images=list(images.values()), caption=list(images.keys()))
 
-    def validation_epoch_end(self, validation_step_outputs):
-        truths_batches = [d["disc_input"] for d in validation_step_outputs]
+    def on_validation_epoch_end(self):
+        truths_batches = [d["disc_input"] for d in self.validation_step_outputs]
         truths_events = [event for batch in truths_batches for event in batch]
 
         if self.trainer.state.stage == "validate":
             sentence_stats = {}
             
             # Extract and flatten predictions
-            preds_batches = [d["gen_output"] for d in validation_step_outputs]
+            preds_batches = [d["gen_output"] for d in self.validation_step_outputs]
             preds_events = [event for batch in preds_batches for event in batch]      
 
-            # ==================================================================
-            # ================= FOR SAVING PREDICTIONS AND TRUTHS ==============
-            # ==================================================================
-            # clusters = [d["clusters"] for d in validation_step_outputs]
-            # save_dir = os.path.join(
-            #     self.datamodule.data_dir,
-            #     "plots",
-            #     self.datamodule.raw_processed_filename.split(".")[0],
-            #     "validation_batches",
-            # )
-            # os.makedirs(save_dir, exist_ok=True)
-            # save_path = os.path.join(save_dir, f"{self.trainer.global_step}.pt")
-            # torch.save(
-            #     {
-            #         "preds_batches": preds_batches,
-            #         "truths_batches": truths_batches,
-            #         "clusters": clusters,
-            #     },
-            #     save_path,
-            # )
-            # ==================================================================
-            
             # Compute multiplicity stats safely using the unstacked event lists
             if not self.hparams.gumbel_softmax_hard:
                 threshold = 0.5
@@ -374,7 +389,7 @@ class MultiHadronEventGANModule(LightningModule):
             self.val_swd_hadron_multiplicity.reset()
 
         elif self.trainer.state.stage == "sanity_check":
-            gen_input = [d["gen_input"] for d in validation_step_outputs]
+            gen_input = [d["gen_input"] for d in self.validation_step_outputs]
             gen_input = [d for gen_in in gen_input for d in gen_in] # [total_n_clusters, features]
             gen_input = torch.stack(gen_input)
 
@@ -389,6 +404,9 @@ class MultiHadronEventGANModule(LightningModule):
                 images=list(images.values()),
                 caption=list(images.keys()),
             )
+
+        # Clear step outputs buffer at the end of epoch
+        self.validation_step_outputs.clear()
 
     def _prepare_plots(self, predictions=None, truths=None, sentence_stats=None, clusters=None):
         """ Prepare histograms and other charts using the data received from validation_epoch_end().
@@ -416,18 +434,15 @@ class MultiHadronEventGANModule(LightningModule):
             truths_types = torch.argmax(truths[:, self.hadron_kins_dim:], dim=1) - 1
 
             # Destandardising the kinematics of the hadrons
-            # Out-of-place calculation using standard operations
             m_mean, m_std = self.hadron_stats["momentum_mean"], self.hadron_stats["momentum_std"]
             e_mean, e_std = self.hadron_stats["energy_mean"], self.hadron_stats["energy_std"]
-            # Compute directly without assigning back to slices in-place
+            
             truth_energy = truths_kin[:, 0] * e_std + e_mean
             truth_momenta = truths_kin[:, 1:4] * m_std + m_mean
             preds_energy = preds_kin[:, 0] * e_std + e_mean
             preds_momenta = preds_kin[:, 1:4] * m_std + m_mean
 
-            # ==================================================================
-            # ======================= Hadron type histogram ====================
-            # ==================================================================
+            # Hadron type histogram
             sample_range = [0, truths_types.max()]
             bins = np.linspace(
                 start=sample_range[0] - 0.5, 
@@ -449,7 +464,6 @@ class MultiHadronEventGANModule(LightningModule):
             plt.tight_layout()
             diagrams["hadron_type_hist"] = fig_to_array(fig, tight_layout=False)
             
-            # =========== Saving the hadron type histogram to a file ===========
             dirname = os.path.join(
                 self.datamodule.data_dir, "plots",
                 self.datamodule.raw_processed_filename.split(".")[0], 
@@ -462,9 +476,7 @@ class MultiHadronEventGANModule(LightningModule):
             )
             plt.savefig(filepath)
 
-            # ==================================================================
-            # ============= Hadron energy and momentum histogram ===============
-            # ==================================================================
+            # Hadron energy and momentum histogram
             fig, axs = plt.subplots(2, 2, figsize=(12, 9))
             fig.subplots_adjust(wspace=0.35, hspace=0.35)        
             labels = ["Generated", "True"]
@@ -489,13 +501,9 @@ class MultiHadronEventGANModule(LightningModule):
             axs[0][0].set_ylim(0, records.max() * 1.15)
             axs[0][0].set_xlabel("Energy [GeV]", labelpad=15)
 
-            # Flattening the axis labels for a 1D mapping
             axis_names = ['x', 'y', 'z']
-            # Flattening the 2x2 grid to a 1D array of 4 subplots
             axs_flat = axs.flatten() 
-            # Looping through the 3 momentum columns (indices 0, 1, 2)
             for feature in range(3):
-                # Energy is at index 0, so momentum plots occupy indices 1, 2, and 3
                 ax = axs_flat[feature + 1] 
                 ax.set_xlabel(f"Momentum ({axis_names[feature].upper()})", labelpad=15)                
                 (records, bins, _) = ax.hist(
@@ -514,7 +522,6 @@ class MultiHadronEventGANModule(LightningModule):
                 std_val = truth_momenta[:, feature].std().item()
                 ax.set_xlim((mean_val - 3 * std_val, mean_val + 3 * std_val))
             
-            # Global adjustments for all 4 subplots
             for ax in axs_flat:
                 ax.set_ylabel("Hadrons", labelpad=12)
                 ax.legend(loc='upper right')
@@ -523,7 +530,6 @@ class MultiHadronEventGANModule(LightningModule):
                          "\"True\" defines the scale and limits.")
             diagrams["hadron_kinematics_hist"] = fig_to_array(fig, tight_layout=False)
 
-            # === Saving the hadron energy and momentum histogram to a file ====
             dirname = os.path.join(
                 self.datamodule.data_dir, "plots",
                 self.datamodule.raw_processed_filename.split(".")[0], 
@@ -536,9 +542,7 @@ class MultiHadronEventGANModule(LightningModule):
             )
             plt.savefig(filepath)
 
-            # ==================================================================
-            # =============== Hadron and padding token multiplicity ============
-            # ==================================================================
+            # Hadron and padding token multiplicity
             n_max_hads = sentence_stats["true_n_hads_per_cluster"][0] + \
                             sentence_stats["true_n_pad_hads_per_cluster"][0]
             fig, axs = plt.subplots(1, 2, figsize=(10, 5))
@@ -574,7 +578,6 @@ class MultiHadronEventGANModule(LightningModule):
             diagrams["sentence_statistics_hist"] = fig_to_array(
                 fig, tight_layout=False)
             
-            # ============= Saving sentence statistics histograms ==============
             dirname = os.path.join(
                 self.datamodule.data_dir, "plots",
                 self.datamodule.raw_processed_filename.split(".")[0], 
@@ -588,16 +591,12 @@ class MultiHadronEventGANModule(LightningModule):
             plt.savefig(filepath)
 
         elif clusters is not None and truths is not None:
-            # Initial plots when there is no training yet (sanity check)
             diagrams = {}
             kinematics = clusters[:, :4]
             quark_types = clusters[:, 4:6]
             quark_angles = clusters[:, 6:]
             hadron_types = truths[:, self.hadron_kins_dim:]
             
-            # ==================================================================
-            # ====================== Cluster statistics ========================
-            # ==================================================================
             fig, axs = plt.subplots(1, 3, figsize=(15, 6))
             axis = ['x', 'y', 'z']
             for col in range(0, 3):
@@ -612,7 +611,6 @@ class MultiHadronEventGANModule(LightningModule):
             diagrams["cluster_kinematics_hist"] = fig_to_array(
                 fig, tight_layout=False)
 
-            # ============= Saving cluster kinematics histograms ==============
             dirname = os.path.join(
                 self.datamodule.data_dir, "plots",
                 self.datamodule.raw_processed_filename.split(".")[0]
@@ -624,7 +622,6 @@ class MultiHadronEventGANModule(LightningModule):
             )
             plt.savefig(filepath)
 
-            # Quark types and angles
             quark_types = torch.where(quark_types <= 8, -quark_types, quark_types - 8)
             count = Counter(quark_types.flatten().tolist())
             quark_pids = list(map(lambda x: x[0], count.most_common()))
@@ -653,7 +650,6 @@ class MultiHadronEventGANModule(LightningModule):
             plt.tight_layout()
             diagrams["quarks_features_hist"] = fig_to_array(fig, tight_layout=False) 
 
-            # =============== Saving quark features histograms =================
             dirname = os.path.join(
                 self.datamodule.data_dir, "plots",
                 self.datamodule.raw_processed_filename.split(".")[0]
@@ -665,9 +661,6 @@ class MultiHadronEventGANModule(LightningModule):
             )
             plt.savefig(filepath)
     
-            # ==================================================================
-            # ==================== Hadron type histogram =======================
-            # ==================================================================
             hadron_types = torch.argmax(hadron_types, dim=1)
             hadron_types = hadron_types[hadron_types != 0] - 1
             with open(os.path.join(os.path.normpath(self.hparams.datamodule.data_dir),
@@ -692,11 +685,10 @@ class MultiHadronEventGANModule(LightningModule):
             plt.tight_layout()
             diagrams["hadron_initial_type_hist"] = fig_to_array(fig, tight_layout=False)    
             
-            # ================= Saving hadron type histogram ===================
             dirname = os.path.join(
                 self.datamodule.data_dir, "plots",
                 self.datamodule.raw_processed_filename.split(".")[0]
-        )
+            )
             os.makedirs(dirname, exist_ok=True)
             filepath = os.path.join(
                 dirname,

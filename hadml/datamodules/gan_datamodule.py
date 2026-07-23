@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, Tuple, Protocol
 import torch, os, numpy as np
 from pytorch_lightning import LightningDataModule
-from pytorch_lightning.trainer.supporters import CombinedLoader
+from pytorch_lightning.utilities.combined_loader import CombinedLoader
 from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
 from torch_geometric.loader import DataLoader as GeometricDataLoader
 from torch_geometric.data.dataset import Dataset as GeometricDataset
