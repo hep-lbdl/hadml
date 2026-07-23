@@ -48,11 +48,19 @@ class MultiHadronEventGANModule(LightningModule):
             "momentum_mean" : stats["hadron_momentum_mean"], "momentum_std" : stats["hadron_momentum_std"],
             "energy_mean" : stats["hadron_energy_mean"], "energy_std" : stats["hadron_energy_std"], 
         }
+        self.cluster_stats = {
+            "momentum_mean" : stats["cluster_momentum_mean"], "momentum_std" : stats["cluster_momentum_std"],
+            "energy_mean" : stats["cluster_energy_mean"], "energy_std" : stats["cluster_energy_std"]
+        }
         # Register stats as buffers so Lightning keeps them on the module device.
         self.register_buffer("hadron_momentum_mean", torch.as_tensor(stats["hadron_momentum_mean"]))
         self.register_buffer("hadron_momentum_std", torch.as_tensor(stats["hadron_momentum_std"]))
         self.register_buffer("hadron_energy_mean", torch.as_tensor(stats["hadron_energy_mean"]))
         self.register_buffer("hadron_energy_std", torch.as_tensor(stats["hadron_energy_std"]))
+        self.register_buffer("cluster_momentum_mean", torch.as_tensor(stats["cluster_momentum_mean"]))
+        self.register_buffer("cluster_momentum_std", torch.as_tensor(stats["cluster_momentum_std"]))
+        self.register_buffer("cluster_energy_mean", torch.as_tensor(stats["cluster_energy_mean"]))
+        self.register_buffer("cluster_energy_std", torch.as_tensor(stats["cluster_energy_std"]))
 
     def _sanitise_tensor(self, x, name="tensor", clamp_val=50.0):
         if not torch.isfinite(x).all():
@@ -106,7 +114,7 @@ class MultiHadronEventGANModule(LightningModule):
         self._update_gumbel_temp()
         
         gen_input, real_hadrons = batch
-
+        
         if optimizer_idx == 0:
             # Generator turn
             fake_hadrons = self(gen_input)
@@ -116,24 +124,32 @@ class MultiHadronEventGANModule(LightningModule):
             generator_loss = self._generator_loss(score_for_fake)
 
             if self.hparams.deviation_coeff > 0:
+                # Destandardising the kinematics of the fake hadrons
                 valid_mask = (fake_hadrons[:, :, self.hadron_kins_dim:self.hadron_kins_dim+1] == 0.0).float()
+                hadron_energy_std = self.hadron_energy_std.to(dtype=fake_hadrons.dtype)
+                hadron_energy_mean = self.hadron_energy_mean.to(dtype=fake_hadrons.dtype)
+                hadron_momentum_std = self.hadron_momentum_std.to(dtype=fake_hadrons.dtype)
+                hadron_momentum_mean = self.hadron_momentum_mean.to(dtype=fake_hadrons.dtype)
+                hadron_destandardised_energy = fake_hadrons[:, :, 0:1] * \
+                    hadron_energy_std + hadron_energy_mean
+                hadron_destandardised_momentum = fake_hadrons[:, :, 1:4] * \
+                    hadron_momentum_std + hadron_momentum_mean
+                hadron_destandardised_kin = torch.cat([hadron_destandardised_energy, hadron_destandardised_momentum], dim=2)
+                hadron_destandardised_kin = hadron_destandardised_kin * valid_mask
+                actual_momentum_sum = hadron_destandardised_kin.sum(axis=1)
 
-                energy_std = self.hadron_energy_std.to(dtype=fake_hadrons.dtype)
-                energy_mean = self.hadron_energy_mean.to(dtype=fake_hadrons.dtype)
-                momentum_std = self.hadron_momentum_std.to(dtype=fake_hadrons.dtype)
-                momentum_mean = self.hadron_momentum_mean.to(dtype=fake_hadrons.dtype)
+                # Destandardising the kinematics of the corresponding clusters
+                cluster_energy_std = self.cluster_energy_std.to(dtype=gen_input.dtype)
+                cluster_energy_mean = self.cluster_energy_mean.to(dtype=gen_input.dtype)
+                cluster_momentum_std = self.cluster_momentum_std.to(dtype=gen_input.dtype)
+                cluster_momentum_mean = self.cluster_momentum_mean.to(dtype=gen_input.dtype)
+                destandardised_cluster_energy = gen_input[:, 0, 0:1] * \
+                    cluster_energy_std + cluster_energy_mean
+                destandardised_cluster_momentum = gen_input[:, 0, 1:4] * \
+                    cluster_momentum_std + cluster_momentum_mean
+                expected_momentum_sum = torch.cat([destandardised_cluster_energy, destandardised_cluster_momentum], dim=1)
 
-                destandardised_energy = fake_hadrons[:, :, 0:1] * \
-                    energy_std + energy_mean
-                destandardised_momentum = fake_hadrons[:, :, 1:4] * \
-                    momentum_std + momentum_mean
-                
-                destandardised_kin = torch.cat([destandardised_energy, destandardised_momentum], dim=2)
-                destandardised_kin = destandardised_kin * valid_mask
-                
-                actual_momentum_sum = destandardised_kin.sum(axis=1)
-                expected_momentum_sum = torch.zeros_like(actual_momentum_sum)
-                expected_momentum_sum[:, 0] = 1.0  # Target energy = 1.0, Target px, py, pz = 0.0
+                # Computing the deviation from the conservation law
                 deviation = (expected_momentum_sum - actual_momentum_sum).abs().sum(axis=1).mean()
                 self.log("deviation_from_conservation_law", deviation, prog_bar=True)
 
